@@ -23,10 +23,10 @@ This system is built to support **multi-organization setups**, allowing scalabil
 
 ## 🛠 Tech Stack (Planned / Partial)
 
-- **Backend**: MySQL (Schema provided), Node.js / Django / FastAPI (TBD)
-- **Frontend**: React / Vue (TBD)
-- **APIs**: REST or GraphQL (TBD)
-- **Deployment**: Docker, AWS/GCP ready
+- **Backend**: MySQL (Schema provided), Node.js / FastAPI
+- **Frontend**: React
+- **APIs**: REST or GraphQL
+- **Deployment**: Docker, AWS
 - **IoT Integration**: MQTT, HTTP/WebSockets for device communication (future milestone)
 
 ---

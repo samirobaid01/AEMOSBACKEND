@@ -2,6 +2,7 @@ const jwt = require('jsonwebtoken');
 const { ApiError } = require('./errorHandler');
 const config = require('../config');
 const { User, Role } = require('../models/initModels');
+const { isTokenBlacklisted } = require('../services/tokenBlacklistService');
 
 /**
  * Authentication middleware to protect routes
@@ -17,6 +18,11 @@ const authenticate = async (req, res, next) => {
     
     const token = authHeader.split(' ')[1];
     
+    // Check if token is blacklisted (logged out)
+    if (isTokenBlacklisted(token)) {
+      throw new ApiError(401, 'Token is no longer valid');
+    }
+    
     // Verify token
     const decoded = jwt.verify(token, config.jwt.secret);
     
@@ -31,6 +37,8 @@ const authenticate = async (req, res, next) => {
     
     // Add user to request object
     req.user = user;
+    // Store token in request for potential logout
+    req.token = token;
     next();
   } catch (error) {
     if (error.name === 'JsonWebTokenError') {

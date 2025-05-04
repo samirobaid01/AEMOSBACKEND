@@ -25,7 +25,7 @@ const deviceSchema = {
 // Routes
 router
   .route('/')
-  .get(authenticate, deviceController.getAllDevices)
+  .get( deviceController.getAllDevices)
   .post(authenticate, validate(deviceSchema.create), deviceController.createDevice);
 
 router

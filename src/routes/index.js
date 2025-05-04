@@ -815,7 +815,7 @@ router.get('/insomnia', localhostOnly, (req, res) => {
 });
 
 // Handle undefined routes - use this instead of catch-all wildcard
-router.use((req, res) => {
+router.all('*', (req, res) => {
   res.status(404).json({
     status: 'error',
     message: `Cannot find ${req.originalUrl} on this server!`

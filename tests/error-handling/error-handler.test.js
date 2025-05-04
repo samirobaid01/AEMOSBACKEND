@@ -15,6 +15,13 @@ describe('Error Handler Middleware', () => {
     expect(response.body.status).toBe('error');
   });
 
+  it('should format error responses consistently', async () => {
+    const response = await request(app).get('/api/v1/test-error/400');
+    expect(response.status).toBe(400);
+    expect(response.body).toHaveProperty('status');
+    expect(response.body).toHaveProperty('message');
+  });
+
   it('should hide stack traces in production', async () => {
     const originalEnv = process.env.NODE_ENV;
     process.env.NODE_ENV = 'production';

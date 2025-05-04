@@ -25,8 +25,13 @@ const startServer = async () => {
       // logger.info('Database synchronized (tables recreated)');
       
       // Using { alter: true } is less destructive but still dangerous in production
+<<<<<<< HEAD
+      //await sequelize.sync({ alter: true });
+      //logger.info('Database synchronized (tables altered if needed)');
+=======
       // await sequelize.sync({ alter: true });
       // logger.info('Database synchronized (tables altered if needed)');
+>>>>>>> 731cc5a (	new file:   src/controllers/areaController.js)
     }
     
     // Start server

@@ -1,7 +1,5 @@
 const express = require('express');
 const deviceRoutes = require('./deviceRoutes');
-// Import sequelize for the health check
-const sequelize = require('../config/database');
 // TODO: Import other routes as you create them
 // const userRoutes = require('./userRoutes');
 // const organizationRoutes = require('./organizationRoutes');
@@ -48,7 +46,7 @@ router.use('/devices', deviceRoutes);
 // etc.
 
 // Handle undefined routes - use this instead of catch-all wildcard
-router.all('*', (req, res) => {
+router.use((req, res) => {
   res.status(404).json({
     status: 'error',
     message: `Cannot find ${req.originalUrl} on this server!`

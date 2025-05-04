@@ -1,0 +1,37 @@
+# Dependency directories
+node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+
+# Environment variables
+.env
+
+# Build/Output directories
+dist/
+build/
+out/
+
+# OS specific files
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# Editor/IDE specific
+.vscode/
+.idea/
+*.sublime-*
+*.swp
+*.swo
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Production
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log* 

@@ -67,3 +67,108 @@ For collaboration, queries, or suggestions, please open an issue or reach out vi
 ## License
 
 This project is open-source and available under the [MIT License](LICENSE).
+
+# AEMOS Backend API
+
+A state-of-the-art RESTful API for the AEMOS platform, providing endpoints to manage devices, organizations, users, sensors, and more.
+
+## Technologies Used
+
+- **Node.js & Express**: Fast, unopinionated, minimalist web framework for Node.js
+- **Sequelize ORM**: Modern ORM for MySQL, providing robust data modeling and associations
+- **MySQL**: Relational database for storing application data
+- **JWT Authentication**: Secure authentication and authorization
+- **Error Handling**: Custom error handling middleware
+- **Logging**: Winston logger for application monitoring
+- **Validation**: Joi validation for request data
+- **Testing**: Jest & Supertest for unit and integration testing
+- **Code Quality**: ESLint & Prettier for code formatting and linting
+
+## Getting Started
+
+### Prerequisites
+
+- Node.js (v14 or higher)
+- MySQL server
+
+### Installation
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/samirobaid01/AEMOSBACKEND.git
+   cd AEMOSBACKEND
+   ```
+
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+
+3. Create a `.env` file based on `.env.example`:
+   ```bash
+   cp .env.example .env
+   # Edit .env file with your configuration
+   ```
+
+4. Start the development server:
+   ```bash
+   npm run dev
+   ```
+
+## Project Structure
+
+```
+/
+├── src/
+│   ├── server.js             # Entry point that launches Express app
+│   ├── app.js                # Configures middleware, routes, error handling
+│   ├── config/               # Environment variables and configuration
+│   ├── models/               # Sequelize model definitions
+│   ├── repositories/         # Data access layer
+│   ├── services/             # Business logic
+│   ├── controllers/          # Route handlers
+│   ├── routes/               # API route definitions
+│   ├── middlewares/          # Custom middlewares
+│   └── utils/                # Utility functions
+├── migrations/               # Database migrations
+├── seeders/                  # Database seeds
+└── tests/                    # Test files
+```
+
+## API Documentation
+
+The API provides endpoints for:
+
+- Authentication (login, register, refresh token)
+- User management
+- Organization management
+- Device management
+- Sensor data
+- Areas and locations
+- Notifications and tickets
+
+### Base URL
+
+```
+http://localhost:3000/api/v1
+```
+
+### Authentication
+
+Protected endpoints require a JWT token in the Authorization header:
+
+```
+Authorization: Bearer <your_jwt_token>
+```
+
+## Running Tests
+
+```bash
+npm test                 # Run all tests
+npm test:unit            # Run unit tests
+npm test:integration     # Run integration tests
+```
+
+## License
+
+This project is licensed under the ISC License.

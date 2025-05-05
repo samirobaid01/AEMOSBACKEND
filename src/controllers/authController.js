@@ -1,4 +1,5 @@
 const authService = require('../services/authService');
+const userService = require('../services/userService');
 const { ApiError } = require('../middlewares/errorHandler');
 
 // Login user and generate token
@@ -37,6 +38,35 @@ const logout = async (req, res, next) => {
   }
 };
 
+// Signup a new user
+const signup = async (req, res, next) => {
+  try {
+    const userData = req.body;
+    // Extract notifyUser flag but don't include it in user creation data
+    const { notifyUser, ...userCreateData } = userData;
+    
+    // Create the user and optionally send notifications
+    const { user, notifications } = await userService.createUser(
+      userCreateData, 
+      notifyUser || false
+    );
+    
+    // Generate JWT token for automatic login
+    const token = authService.generateToken(user);
+    
+    res.status(201).json({
+      status: 'success',
+      data: {
+        user,
+        token,
+        notifications: notifyUser ? notifications : undefined
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // Get current user information
 const getCurrentUser = async (req, res, next) => {
   try {
@@ -55,5 +85,6 @@ const getCurrentUser = async (req, res, next) => {
 module.exports = {
   login,
   logout,
+  signup,
   getCurrentUser
 }; 

@@ -9,6 +9,9 @@ const router = express.Router();
 // Login route - no authentication required
 router.post('/login', validate(authSchema.login), authController.login);
 
+// Signup route - no authentication required
+router.post('/signup', validate(authSchema.signup), authController.signup);
+
 // Logout route - authentication required
 router.post('/logout', authenticate, authController.logout);
 

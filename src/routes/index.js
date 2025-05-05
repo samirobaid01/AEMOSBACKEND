@@ -51,55 +51,318 @@ const localhostOnly = (req, res, next) => {
 
 // Route documentation endpoint - localhost only
 router.get('/routes', localhostOnly, (req, res) => {
-  const routes = [
-    // Auth routes
-    { method: 'POST', path: '/api/auth/login', description: 'Login and get JWT token', auth: false },
-    { method: 'POST', path: '/api/auth/logout', description: 'Logout and invalidate token', auth: true },
-    { method: 'GET', path: '/api/auth/me', description: 'Get current user information', auth: true },
-    
-    // Organization routes
-    { method: 'GET', path: '/api/organizations', description: 'Get all organizations', auth: true },
-    { method: 'POST', path: '/api/organizations', description: 'Create a new organization', auth: true },
-    { method: 'GET', path: '/api/organizations/:id', description: 'Get organization by ID', auth: true },
-    { method: 'PATCH', path: '/api/organizations/:id', description: 'Update organization', auth: true },
-    { method: 'DELETE', path: '/api/organizations/:id', description: 'Delete organization', auth: true },
-    
-    // Area routes
-    { method: 'GET', path: '/api/areas', description: 'Get all areas', auth: true },
-    { method: 'POST', path: '/api/areas', description: 'Create a new area', auth: true },
-    { method: 'GET', path: '/api/areas/:id', description: 'Get area by ID', auth: true },
-    { method: 'PATCH', path: '/api/areas/:id', description: 'Update area', auth: true },
-    { method: 'DELETE', path: '/api/areas/:id', description: 'Delete area', auth: true },
-    { method: 'GET', path: '/api/areas/organization/:organizationId', description: 'Get areas by organization', auth: true },
-    
-    // Sensor routes
-    { method: 'GET', path: '/api/sensors', description: 'Get all sensors', auth: true },
-    { method: 'POST', path: '/api/sensors', description: 'Create a new sensor', auth: true },
-    { method: 'GET', path: '/api/sensors/:id', description: 'Get sensor by ID', auth: true },
-    { method: 'PATCH', path: '/api/sensors/:id', description: 'Update sensor', auth: true },
-    { method: 'DELETE', path: '/api/sensors/:id', description: 'Delete sensor', auth: true },
-    
-    // Telemetry data routes
-    { method: 'GET', path: '/api/sensors/telemetry', description: 'Get all telemetry data', auth: true },
-    { method: 'POST', path: '/api/sensors/telemetry', description: 'Create telemetry data', auth: true },
-    { method: 'GET', path: '/api/sensors/telemetry/:id', description: 'Get telemetry data by ID', auth: true },
-    { method: 'PATCH', path: '/api/sensors/telemetry/:id', description: 'Update telemetry data', auth: true },
-    { method: 'DELETE', path: '/api/sensors/telemetry/:id', description: 'Delete telemetry data', auth: true },
-    { method: 'GET', path: '/api/sensors/:sensorId/telemetry', description: 'Get telemetry by sensor ID', auth: true },
-    
-    // Device routes
-    { method: 'GET', path: '/api/devices', description: 'Get all devices', auth: true },
-    { method: 'POST', path: '/api/devices', description: 'Create a new device', auth: true },
-    { method: 'GET', path: '/api/devices/:id', description: 'Get device by ID', auth: true },
-    { method: 'PATCH', path: '/api/devices/:id', description: 'Update device', auth: true },
-    { method: 'DELETE', path: '/api/devices/:id', description: 'Delete device', auth: true }
-  ];
+  const routes = {
+    auth: [
+      { 
+        method: 'POST', 
+        path: '/api/auth/login', 
+        description: 'Login and get JWT token', 
+        auth: false,
+        params: {
+          email: "user@example.com",
+          password: "password123"
+        }
+      },
+      {
+        method: 'POST',
+        path: '/api/auth/signup',
+        description: 'Create a new user account',
+        auth: false,
+        params: {
+          userName: "John Doe",
+          email: "user@example.com",
+          password: "password123",
+          phoneNumber: "1234567890",
+          notifyByEmail: true,
+          notifyBySMS: false,
+          notifyByMessage: false,
+          smsNumber: "1234567890",
+          detail: "User details",
+          termsAndConditions: true,
+          notifyUser: true
+        }
+      },
+      { 
+        method: 'POST', 
+        path: '/api/auth/logout', 
+        description: 'Logout and invalidate token', 
+        auth: true 
+      },
+      { 
+        method: 'GET', 
+        path: '/api/auth/me', 
+        description: 'Get current user information', 
+        auth: true 
+      },
+    ],
+    organizations: [
+      { 
+        method: 'GET', 
+        path: '/api/organizations', 
+        description: 'Get all organizations', 
+        auth: true 
+      },
+      { 
+        method: 'POST', 
+        path: '/api/organizations', 
+        description: 'Create a new organization', 
+        auth: true,
+        params: {
+          name: "Organization Name",
+          parentId: null,
+          status: true,
+          detail: "Organization details",
+          paymentMethods: "Credit Card, PayPal",
+          image: "https://example.com/logo.png",
+          address: "123 Main St, City, Country",
+          zip: "12345",
+          email: "org@example.com",
+          isParent: true,
+          contactNumber: "123-456-7890"
+        }
+      },
+      { 
+        method: 'GET', 
+        path: '/api/organizations/:id', 
+        description: 'Get organization by ID', 
+        auth: true 
+      },
+      { 
+        method: 'PATCH', 
+        path: '/api/organizations/:id', 
+        description: 'Update organization', 
+        auth: true,
+        params: {
+          name: "Updated Organization Name",
+          status: true,
+          detail: "Updated details"
+        }
+      },
+      { 
+        method: 'DELETE', 
+        path: '/api/organizations/:id', 
+        description: 'Delete organization', 
+        auth: true 
+      },
+    ],
+    areas: [
+      { 
+        method: 'GET', 
+        path: '/api/areas', 
+        description: 'Get all areas', 
+        auth: true 
+      },
+      { 
+        method: 'POST', 
+        path: '/api/areas', 
+        description: 'Create a new area', 
+        auth: true,
+        params: {
+          name: "Area Name",
+          organizationId: 1,
+          description: "Area description",
+          status: true
+        }
+      },
+      { 
+        method: 'GET', 
+        path: '/api/areas/:id', 
+        description: 'Get area by ID', 
+        auth: true 
+      },
+      { 
+        method: 'PATCH', 
+        path: '/api/areas/:id', 
+        description: 'Update area', 
+        auth: true,
+        params: {
+          name: "Updated Area Name",
+          description: "Updated description",
+          status: true
+        }
+      },
+      { 
+        method: 'DELETE', 
+        path: '/api/areas/:id', 
+        description: 'Delete area', 
+        auth: true 
+      },
+      { 
+        method: 'GET', 
+        path: '/api/areas/organization/:organizationId', 
+        description: 'Get areas by organization', 
+        auth: true 
+      },
+    ],
+    sensors: [
+      { 
+        method: 'GET', 
+        path: '/api/sensors', 
+        description: 'Get all sensors', 
+        auth: true 
+      },
+      { 
+        method: 'POST', 
+        path: '/api/sensors', 
+        description: 'Create a new sensor', 
+        auth: true,
+        params: {
+          name: "Sensor Name",
+          areaId: 1,
+          type: "Temperature",
+          status: true,
+          description: "Sensor description",
+          metadata: {
+            range: "-40C to 80C",
+            precision: "0.1C"
+          }
+        }
+      },
+      { 
+        method: 'GET', 
+        path: '/api/sensors/:id', 
+        description: 'Get sensor by ID', 
+        auth: true 
+      },
+      { 
+        method: 'PATCH', 
+        path: '/api/sensors/:id', 
+        description: 'Update sensor', 
+        auth: true,
+        params: {
+          name: "Updated Sensor Name",
+          type: "Temperature",
+          status: true,
+          description: "Updated description"
+        }
+      },
+      { 
+        method: 'DELETE', 
+        path: '/api/sensors/:id', 
+        description: 'Delete sensor', 
+        auth: true 
+      },
+    ],
+    telemetry: [
+      { 
+        method: 'GET', 
+        path: '/api/sensors/telemetry', 
+        description: 'Get all telemetry data', 
+        auth: true 
+      },
+      { 
+        method: 'POST', 
+        path: '/api/sensors/telemetry', 
+        description: 'Create telemetry data', 
+        auth: true,
+        params: {
+          sensorId: 1,
+          value: 24.5,
+          timestamp: "2023-09-15T14:30:00Z",
+          status: "normal",
+          metadata: {
+            battery: "98%",
+            signal: "strong"
+          }
+        }
+      },
+      { 
+        method: 'GET', 
+        path: '/api/sensors/telemetry/:id', 
+        description: 'Get telemetry data by ID', 
+        auth: true 
+      },
+      { 
+        method: 'PATCH', 
+        path: '/api/sensors/telemetry/:id', 
+        description: 'Update telemetry data', 
+        auth: true,
+        params: {
+          value: 25.2,
+          status: "normal",
+          metadata: {
+            battery: "95%"
+          }
+        }
+      },
+      { 
+        method: 'DELETE', 
+        path: '/api/sensors/telemetry/:id', 
+        description: 'Delete telemetry data', 
+        auth: true 
+      },
+      { 
+        method: 'GET', 
+        path: '/api/sensors/:sensorId/telemetry', 
+        description: 'Get telemetry by sensor ID', 
+        auth: true 
+      },
+    ],
+    devices: [
+      { 
+        method: 'GET', 
+        path: '/api/devices', 
+        description: 'Get all devices', 
+        auth: true 
+      },
+      { 
+        method: 'POST', 
+        path: '/api/devices', 
+        description: 'Create a new device', 
+        auth: true,
+        params: {
+          name: "Device Name",
+          serialNumber: "ABC123XYZ",
+          organizationId: 1,
+          type: "Gateway",
+          status: true,
+          firmware: "v1.2.3",
+          description: "Device description",
+          configuration: {
+            ipAddress: "192.168.1.100",
+            macAddress: "AA:BB:CC:DD:EE:FF"
+          }
+        }
+      },
+      { 
+        method: 'GET', 
+        path: '/api/devices/:id', 
+        description: 'Get device by ID', 
+        auth: true 
+      },
+      { 
+        method: 'PATCH', 
+        path: '/api/devices/:id', 
+        description: 'Update device', 
+        auth: true,
+        params: {
+          name: "Updated Device Name",
+          firmware: "v1.3.0",
+          status: true,
+          description: "Updated description",
+          configuration: {
+            ipAddress: "192.168.1.101"
+          }
+        }
+      },
+      { 
+        method: 'DELETE', 
+        path: '/api/devices/:id', 
+        description: 'Delete device', 
+        auth: true 
+      },
+    ]
+  };
+
+  // Flatten routes for counting
+  const flatRoutes = Object.values(routes).flat();
 
   res.status(200).json({
     status: 'success',
-    results: routes.length,
+    results: flatRoutes.length,
     data: {
-      routes
+      categories: Object.keys(routes),
+      routes: routes
     }
   });
 });
@@ -108,49 +371,311 @@ router.get('/routes', localhostOnly, (req, res) => {
 router.get('/insomnia', localhostOnly, (req, res) => {
   const baseUrl = `${req.protocol}://${req.get('host')}/api`;
   
-  const routes = [
-    // Auth routes
-    { method: 'POST', path: '/auth/login', description: 'Login and get JWT token', auth: false },
-    { method: 'POST', path: '/auth/logout', description: 'Logout and invalidate token', auth: true },
-    { method: 'GET', path: '/auth/me', description: 'Get current user information', auth: true },
-    
-    // Organization routes
-    { method: 'GET', path: '/organizations', description: 'Get all organizations', auth: true },
-    { method: 'POST', path: '/organizations', description: 'Create a new organization', auth: true },
-    { method: 'GET', path: '/organizations/:id', description: 'Get organization by ID', auth: true },
-    { method: 'PATCH', path: '/organizations/:id', description: 'Update organization', auth: true },
-    { method: 'DELETE', path: '/organizations/:id', description: 'Delete organization', auth: true },
-    
-    // Area routes
-    { method: 'GET', path: '/areas', description: 'Get all areas', auth: true },
-    { method: 'POST', path: '/areas', description: 'Create a new area', auth: true },
-    { method: 'GET', path: '/areas/:id', description: 'Get area by ID', auth: true },
-    { method: 'PATCH', path: '/areas/:id', description: 'Update area', auth: true },
-    { method: 'DELETE', path: '/areas/:id', description: 'Delete area', auth: true },
-    { method: 'GET', path: '/areas/organization/:organizationId', description: 'Get areas by organization', auth: true },
-    
-    // Sensor routes
-    { method: 'GET', path: '/sensors', description: 'Get all sensors', auth: true },
-    { method: 'POST', path: '/sensors', description: 'Create a new sensor', auth: true },
-    { method: 'GET', path: '/sensors/:id', description: 'Get sensor by ID', auth: true },
-    { method: 'PATCH', path: '/sensors/:id', description: 'Update sensor', auth: true },
-    { method: 'DELETE', path: '/sensors/:id', description: 'Delete sensor', auth: true },
-    
-    // Telemetry data routes
-    { method: 'GET', path: '/sensors/telemetry', description: 'Get all telemetry data', auth: true },
-    { method: 'POST', path: '/sensors/telemetry', description: 'Create telemetry data', auth: true },
-    { method: 'GET', path: '/sensors/telemetry/:id', description: 'Get telemetry data by ID', auth: true },
-    { method: 'PATCH', path: '/sensors/telemetry/:id', description: 'Update telemetry data', auth: true },
-    { method: 'DELETE', path: '/sensors/telemetry/:id', description: 'Delete telemetry data', auth: true },
-    { method: 'GET', path: '/sensors/:sensorId/telemetry', description: 'Get telemetry by sensor ID', auth: true },
-    
-    // Device routes
-    { method: 'GET', path: '/devices', description: 'Get all devices', auth: true },
-    { method: 'POST', path: '/devices', description: 'Create a new device', auth: true },
-    { method: 'GET', path: '/devices/:id', description: 'Get device by ID', auth: true },
-    { method: 'PATCH', path: '/devices/:id', description: 'Update device', auth: true },
-    { method: 'DELETE', path: '/devices/:id', description: 'Delete device', auth: true }
-  ];
+  const routes = {
+    auth: [
+      { 
+        method: 'POST', 
+        path: '/auth/login', 
+        description: 'Login and get JWT token', 
+        auth: false,
+        params: {
+          email: "user@example.com",
+          password: "password123"
+        }
+      },
+      {
+        method: 'POST',
+        path: '/auth/signup',
+        description: 'Create a new user account',
+        auth: false,
+        params: {
+          userName: "John Doe",
+          email: "user@example.com",
+          password: "password123",
+          phoneNumber: "1234567890",
+          notifyByEmail: true,
+          notifyBySMS: false,
+          notifyByMessage: false,
+          smsNumber: "1234567890",
+          detail: "User details",
+          termsAndConditions: true,
+          notifyUser: true
+        }
+      },
+      { 
+        method: 'POST', 
+        path: '/auth/logout', 
+        description: 'Logout and invalidate token', 
+        auth: true 
+      },
+      { 
+        method: 'GET', 
+        path: '/auth/me', 
+        description: 'Get current user information', 
+        auth: true 
+      },
+    ],
+    organizations: [
+      { 
+        method: 'GET', 
+        path: '/organizations', 
+        description: 'Get all organizations', 
+        auth: true 
+      },
+      { 
+        method: 'POST', 
+        path: '/organizations', 
+        description: 'Create a new organization', 
+        auth: true,
+        params: {
+          name: "Organization Name",
+          parentId: null,
+          status: true,
+          detail: "Organization details",
+          paymentMethods: "Credit Card, PayPal",
+          image: "https://example.com/logo.png",
+          address: "123 Main St, City, Country",
+          zip: "12345",
+          email: "org@example.com",
+          isParent: true,
+          contactNumber: "123-456-7890"
+        }
+      },
+      { 
+        method: 'GET', 
+        path: '/organizations/:id', 
+        description: 'Get organization by ID', 
+        auth: true 
+      },
+      { 
+        method: 'PATCH', 
+        path: '/organizations/:id', 
+        description: 'Update organization', 
+        auth: true,
+        params: {
+          name: "Updated Organization Name",
+          status: true,
+          detail: "Updated details"
+        }
+      },
+      { 
+        method: 'DELETE', 
+        path: '/organizations/:id', 
+        description: 'Delete organization', 
+        auth: true 
+      },
+    ],
+    areas: [
+      { 
+        method: 'GET', 
+        path: '/areas', 
+        description: 'Get all areas', 
+        auth: true 
+      },
+      { 
+        method: 'POST', 
+        path: '/areas', 
+        description: 'Create a new area', 
+        auth: true,
+        params: {
+          name: "Area Name",
+          organizationId: 1,
+          description: "Area description",
+          status: true
+        }
+      },
+      { 
+        method: 'GET', 
+        path: '/areas/:id', 
+        description: 'Get area by ID', 
+        auth: true 
+      },
+      { 
+        method: 'PATCH', 
+        path: '/areas/:id', 
+        description: 'Update area', 
+        auth: true,
+        params: {
+          name: "Updated Area Name",
+          description: "Updated description",
+          status: true
+        }
+      },
+      { 
+        method: 'DELETE', 
+        path: '/areas/:id', 
+        description: 'Delete area', 
+        auth: true 
+      },
+      { 
+        method: 'GET', 
+        path: '/areas/organization/:organizationId', 
+        description: 'Get areas by organization', 
+        auth: true 
+      },
+    ],
+    sensors: [
+      { 
+        method: 'GET', 
+        path: '/sensors', 
+        description: 'Get all sensors', 
+        auth: true 
+      },
+      { 
+        method: 'POST', 
+        path: '/sensors', 
+        description: 'Create a new sensor', 
+        auth: true,
+        params: {
+          name: "Sensor Name",
+          areaId: 1,
+          type: "Temperature",
+          status: true,
+          description: "Sensor description",
+          metadata: {
+            range: "-40C to 80C",
+            precision: "0.1C"
+          }
+        }
+      },
+      { 
+        method: 'GET', 
+        path: '/sensors/:id', 
+        description: 'Get sensor by ID', 
+        auth: true 
+      },
+      { 
+        method: 'PATCH', 
+        path: '/sensors/:id', 
+        description: 'Update sensor', 
+        auth: true,
+        params: {
+          name: "Updated Sensor Name",
+          type: "Temperature",
+          status: true,
+          description: "Updated description"
+        }
+      },
+      { 
+        method: 'DELETE', 
+        path: '/sensors/:id', 
+        description: 'Delete sensor', 
+        auth: true 
+      },
+    ],
+    telemetry: [
+      { 
+        method: 'GET', 
+        path: '/sensors/telemetry', 
+        description: 'Get all telemetry data', 
+        auth: true 
+      },
+      { 
+        method: 'POST', 
+        path: '/sensors/telemetry', 
+        description: 'Create telemetry data', 
+        auth: true,
+        params: {
+          sensorId: 1,
+          value: 24.5,
+          timestamp: "2023-09-15T14:30:00Z",
+          status: "normal",
+          metadata: {
+            battery: "98%",
+            signal: "strong"
+          }
+        }
+      },
+      { 
+        method: 'GET', 
+        path: '/sensors/telemetry/:id', 
+        description: 'Get telemetry data by ID', 
+        auth: true 
+      },
+      { 
+        method: 'PATCH', 
+        path: '/sensors/telemetry/:id', 
+        description: 'Update telemetry data', 
+        auth: true,
+        params: {
+          value: 25.2,
+          status: "normal",
+          metadata: {
+            battery: "95%"
+          }
+        }
+      },
+      { 
+        method: 'DELETE', 
+        path: '/sensors/telemetry/:id', 
+        description: 'Delete telemetry data', 
+        auth: true 
+      },
+      { 
+        method: 'GET', 
+        path: '/sensors/:sensorId/telemetry', 
+        description: 'Get telemetry by sensor ID', 
+        auth: true 
+      },
+    ],
+    devices: [
+      { 
+        method: 'GET', 
+        path: '/devices', 
+        description: 'Get all devices', 
+        auth: true 
+      },
+      { 
+        method: 'POST', 
+        path: '/devices', 
+        description: 'Create a new device', 
+        auth: true,
+        params: {
+          name: "Device Name",
+          serialNumber: "ABC123XYZ",
+          organizationId: 1,
+          type: "Gateway",
+          status: true,
+          firmware: "v1.2.3",
+          description: "Device description",
+          configuration: {
+            ipAddress: "192.168.1.100",
+            macAddress: "AA:BB:CC:DD:EE:FF"
+          }
+        }
+      },
+      { 
+        method: 'GET', 
+        path: '/devices/:id', 
+        description: 'Get device by ID', 
+        auth: true 
+      },
+      { 
+        method: 'PATCH', 
+        path: '/devices/:id', 
+        description: 'Update device', 
+        auth: true,
+        params: {
+          name: "Updated Device Name",
+          firmware: "v1.3.0",
+          status: true,
+          description: "Updated description",
+          configuration: {
+            ipAddress: "192.168.1.101"
+          }
+        }
+      },
+      { 
+        method: 'DELETE', 
+        path: '/devices/:id', 
+        description: 'Delete device', 
+        auth: true 
+      },
+    ]
+  };
+  
+  // Flatten routes for processing
+  const flatRoutes = Object.values(routes).flat();
   
   // Generate Insomnia export
   const resources = [];
@@ -183,46 +708,69 @@ router.get('/insomnia', localhostOnly, (req, res) => {
     parentId: workspaceId,
     _type: 'environment'
   });
-  
-  // Add each endpoint as a request
-  routes.forEach(route => {
-    const requestId = `req_${Math.random().toString(36).substring(2, 15)}`;
+
+  // Create folder for each category
+  const folderIds = {};
+  Object.keys(routes).forEach((category, index) => {
+    const folderId = `fld_${Math.random().toString(36).substring(2, 15)}`;
+    folderIds[category] = folderId;
+    
     resources.push({
-      _id: requestId,
+      _id: folderId,
       parentId: workspaceId,
       modified: Date.now(),
       created: Date.now(),
-      url: `{{ base_url }}${route.path}`,
-      name: `${route.method} ${route.path}`,
-      description: route.description,
-      method: route.method,
-      body: {
-        mimeType: 'application/json',
-        text: route.method === 'POST' || route.method === 'PATCH' ? '{}' : ''
-      },
-      parameters: [],
-      headers: [
-        {
-          name: 'Content-Type',
-          value: 'application/json',
-          description: ''
+      name: category.charAt(0).toUpperCase() + category.slice(1),
+      description: `${category.charAt(0).toUpperCase() + category.slice(1)} API endpoints`,
+      environment: {},
+      metaSortKey: (index + 1) * 1000,
+      _type: 'request_group'
+    });
+  });
+  
+  // Add each endpoint as a request within appropriate folder
+  Object.entries(routes).forEach(([category, categoryRoutes]) => {
+    categoryRoutes.forEach((route, index) => {
+      const requestId = `req_${Math.random().toString(36).substring(2, 15)}`;
+      resources.push({
+        _id: requestId,
+        parentId: folderIds[category],
+        modified: Date.now(),
+        created: Date.now(),
+        url: `{{ base_url }}${route.path}`,
+        name: `${route.method} ${route.path}`,
+        description: route.description,
+        method: route.method,
+        body: {
+          mimeType: 'application/json',
+          text: (route.method === 'POST' || route.method === 'PATCH') && route.params 
+            ? JSON.stringify(route.params, null, 2) 
+            : ''
         },
-        ...(route.auth ? [{
-          name: 'Authorization',
-          value: 'Bearer {{ token }}',
-          description: ''
-        }] : [])
-      ],
-      authentication: {},
-      metaSortKey: Date.now(),
-      isPrivate: false,
-      settingStoreCookies: true,
-      settingSendCookies: true,
-      settingDisableRenderRequestBody: false,
-      settingEncodeUrl: true,
-      settingRebuildPath: true,
-      settingFollowRedirects: 'global',
-      _type: 'request'
+        parameters: [],
+        headers: [
+          {
+            name: 'Content-Type',
+            value: 'application/json',
+            description: ''
+          },
+          ...(route.auth ? [{
+            name: 'Authorization',
+            value: 'Bearer {{ token }}',
+            description: ''
+          }] : [])
+        ],
+        authentication: {},
+        metaSortKey: (index + 1) * 100,
+        isPrivate: false,
+        settingStoreCookies: true,
+        settingSendCookies: true,
+        settingDisableRenderRequestBody: false,
+        settingEncodeUrl: true,
+        settingRebuildPath: true,
+        settingFollowRedirects: 'global',
+        _type: 'request'
+      });
     });
   });
   

@@ -1,0 +1,99 @@
+name: AEMOS API CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    services:
+      # MySQL service for integration tests
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: aemos_core_test
+        ports:
+          - 3306:3306
+        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
+    
+    strategy:
+      matrix:
+        node-version: [16.x, 18.x]
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Check linting
+        run: npm run lint
+        continue-on-error: true
+        
+      - name: Run unit tests
+        run: npm test -- --coverage --testPathIgnorePatterns="tests/integration"
+      
+      - name: Run integration tests
+        run: npm test -- --coverage --testPathPattern="tests/integration"
+        env:
+          DB_HOST: localhost
+          DB_PORT: 3306
+          DB_USER: root
+          DB_PASSWORD: root
+          DB_NAME: aemos_core_test
+          JWT_SECRET: test-secret
+          JWT_EXPIRES_IN: 1h
+          NODE_ENV: test
+      
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v3
+        with:
+          directory: ./coverage/
+          fail_ci_if_error: false
+          verbose: true
+  
+  build:
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Use Node.js 18.x
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18.x
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Build
+        run: npm run build --if-present
+      
+      - name: Create artifacts
+        run: |
+          mkdir -p ./artifact
+          cp -r ./src ./package.json ./package-lock.json ./artifact/
+          cd artifact
+          npm ci --production
+          cd ..
+          tar -zcvf artifact.tar.gz ./artifact
+      
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: app-artifact
+          path: artifact.tar.gz 

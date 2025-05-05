@@ -1,6 +1,5 @@
 const request = require('supertest');
-const jwt = require('jsonwebtoken');
-const config = require('../../src/config');
+const { Device } = require('../../src/models/initModels');
 
 // Mock auth middleware before requiring app
 jest.mock('../../src/middlewares/auth', () => ({
@@ -20,7 +19,6 @@ jest.mock('../../src/middlewares/auth', () => ({
 
 // Now require the app after mocking
 const app = require('../../src/app');
-const { Device } = require('../../src/models/initModels');
 
 // Mock Sequelize models
 jest.mock('../../src/models/initModels', () => ({
@@ -28,8 +26,8 @@ jest.mock('../../src/models/initModels', () => ({
     findAll: jest.fn(),
     findByPk: jest.fn(),
     create: jest.fn(),
-    update: jest.fn(),
-    destroy: jest.fn()
+    update: jest.fn().mockImplementation(function() { return Promise.resolve([1, [this]]); }),
+    destroy: jest.fn().mockResolvedValue(1)
   }
 }));
 
@@ -84,6 +82,8 @@ describe('Device API Endpoints', () => {
 
       // Assert
       expect(response.status).toBe(404);
+      expect(response.body.status).toBe('error');
+      expect(response.body.message).toContain('not found');
     });
   });
 
@@ -125,6 +125,85 @@ describe('Device API Endpoints', () => {
 
       // Assert
       expect(response.status).toBe(400);
+      expect(response.body.status).toBe('error');
+    });
+  });
+
+  describe('PATCH /devices/:id', () => {
+    it('should update a device', async () => {
+      // Arrange
+      const updateData = { 
+        name: 'Updated Device',
+        description: 'Updated description' 
+      };
+      
+      const mockUpdatedDevice = { 
+        id: 1, 
+        name: 'Updated Device',
+        description: 'Updated description',
+        status: true,
+        update: jest.fn().mockResolvedValue(true)
+      };
+      
+      Device.findByPk.mockResolvedValue(mockUpdatedDevice);
+
+      // Act
+      const response = await request(app)
+        .patch('/api/v1/devices/1')
+        .send(updateData);
+
+      // Assert
+      expect(response.status).toBe(200);
+      expect(response.body.status).toBe('success');
+      // Exclude function properties when comparing
+      const { update, ...deviceWithoutFunctions } = mockUpdatedDevice;
+      expect(response.body.data.device).toEqual(deviceWithoutFunctions);
+    });
+
+    it('should return 404 if device not found', async () => {
+      // Arrange
+      Device.findByPk.mockResolvedValue(null);
+
+      // Act
+      const response = await request(app)
+        .patch('/api/v1/devices/999')
+        .send({ name: 'Updated Device' });
+
+      // Assert
+      expect(response.status).toBe(404);
+      expect(response.body.status).toBe('error');
+    });
+  });
+
+  describe('DELETE /devices/:id', () => {
+    it('should delete a device', async () => {
+      // Arrange
+      const mockDevice = { 
+        id: 1, 
+        destroy: jest.fn().mockResolvedValue(true)
+      };
+      
+      Device.findByPk.mockResolvedValue(mockDevice);
+
+      // Act
+      const response = await request(app)
+        .delete('/api/v1/devices/1');
+
+      // Assert
+      expect(response.status).toBe(204);
+    });
+
+    it('should return 404 if device not found', async () => {
+      // Arrange
+      Device.findByPk.mockResolvedValue(null);
+
+      // Act
+      const response = await request(app)
+        .delete('/api/v1/devices/999');
+
+      // Assert
+      expect(response.status).toBe(404);
+      expect(response.body.status).toBe('error');
     });
   });
 }); 

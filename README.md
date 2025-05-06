@@ -83,6 +83,7 @@ A state-of-the-art RESTful API for the AEMOS platform, providing endpoints to ma
 - **Validation**: Joi validation for request data
 - **Testing**: Jest & Supertest for unit and integration testing
 - **Code Quality**: ESLint & Prettier for code formatting and linting
+- **Real-time Notifications**: Socket.io for instant notifications and alerts
 
 ## Getting Started
 
@@ -160,6 +161,49 @@ Protected endpoints require a JWT token in the Authorization header:
 ```
 Authorization: Bearer <your_jwt_token>
 ```
+
+## Real-time Notifications
+
+The API uses Socket.io for real-time communication, allowing for instant notifications and alerts.
+
+### Socket Client Connection
+
+```javascript
+// Client-side example (using socket.io-client)
+const socket = io('http://localhost:3000');
+
+// Listen for notifications
+socket.on('notification', (data) => {
+  console.log('New notification:', data);
+  // Handle notification (e.g., display toast, update UI)
+});
+
+// Listen for specific event types
+socket.on('alert', (data) => {
+  console.log('New alert:', data);
+  // Handle alert (e.g., display warning dialog)
+});
+
+// Join rooms for targeted notifications
+socket.emit('join', [userId, orgId, areaId]);
+```
+
+### Notification Types
+
+The system supports various notification types:
+
+- **System notifications**: Server status, maintenance alerts
+- **Device alerts**: Threshold exceeded, device offline
+- **User events**: Account updates, permission changes
+- **Organization events**: New users, configuration changes
+
+### Server Implementation
+
+The notification system is implemented with a flexible architecture:
+
+- **Centralized notification service**: Send notifications through multiple channels (socket, email, SMS)
+- **Room-based targeting**: Notifications can target specific users, organizations, or areas
+- **Multi-channel support**: Notifications can be sent through any combination of channels
 
 ## Running Tests
 

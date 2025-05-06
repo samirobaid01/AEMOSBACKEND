@@ -1,8 +1,8 @@
-const deviceService = require('../../../src/services/deviceService');
-const { Device, State } = require('../../../src/models/initModels');
+const deviceService = require('../../src/services/deviceService');
+const { Device, State } = require('../../src/models/initModels');
 
 // Mock Sequelize models
-jest.mock('../../../src/models/initModels', () => ({
+jest.mock('../../src/models/initModels', () => ({
   Device: {
     findAll: jest.fn(),
     findByPk: jest.fn(),

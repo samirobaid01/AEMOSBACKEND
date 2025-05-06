@@ -13,7 +13,7 @@ module.exports = {
     password: process.env.DB_PASSWORD || '',
   },
   jwt: {
-    secret: process.env.JWT_SECRET || 'default_jwt_secret',
+    secret: process.env.JWT_SECRET || 'aemos_secret_key_change_in_production',
     expiresIn: process.env.JWT_EXPIRES_IN || '24h'
   },
   logging: {

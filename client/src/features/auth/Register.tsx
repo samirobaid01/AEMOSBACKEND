@@ -9,7 +9,7 @@ import {
   Box,
   Typography,
   Alert,
-  Grid,
+  Stack,
   Checkbox,
   FormControlLabel,
 } from '@mui/material';
@@ -17,6 +17,7 @@ import type { Theme } from '@mui/material/styles';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { register as registerUser, clearError } from '../../store/slices/authSlice';
+import analyticsService from '../../services/analytics';
 
 const Register: React.FC = () => {
   const [formData, setFormData] = useState({
@@ -33,6 +34,7 @@ const Register: React.FC = () => {
   
   const dispatch = useAppDispatch();
   const { loading, error, isAuthenticated } = useAppSelector(state => state.auth);
+  const { enabled: analyticsEnabled } = useAppSelector(state => state.analytics);
   const navigate = useNavigate();
 
   // Clear any errors when component mounts
@@ -58,19 +60,49 @@ const Register: React.FC = () => {
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     
+    // Track registration attempt if analytics is enabled
+    if (analyticsEnabled) {
+      analyticsService.trackEvent('registration_attempt', {
+        has_username: Boolean(formData.userName),
+        has_email: Boolean(formData.email),
+        accepted_terms: formData.termsAndConditions
+      });
+    }
+    
     // Validation
     if (!formData.userName || !formData.email || !formData.password) {
       setValidationError('Please fill in all required fields');
+      
+      // Track validation error
+      if (analyticsEnabled) {
+        analyticsService.trackEvent('registration_validation_error', {
+          error: 'missing_required_fields'
+        });
+      }
       return;
     }
     
     if (formData.password !== formData.confirmPassword) {
       setValidationError('Passwords do not match');
+      
+      // Track validation error
+      if (analyticsEnabled) {
+        analyticsService.trackEvent('registration_validation_error', {
+          error: 'passwords_mismatch'
+        });
+      }
       return;
     }
 
     if (!formData.termsAndConditions) {
       setValidationError('You must accept the terms and conditions');
+      
+      // Track validation error
+      if (analyticsEnabled) {
+        analyticsService.trackEvent('registration_validation_error', {
+          error: 'terms_not_accepted'
+        });
+      }
       return;
     }
     
@@ -84,9 +116,34 @@ const Register: React.FC = () => {
     dispatch(registerUser(userData))
       .unwrap()
       .then(() => {
+        // Track successful registration
+        if (analyticsEnabled) {
+          analyticsService.trackEvent('registration_success', {
+            has_first_name: Boolean(formData.firstName),
+            has_last_name: Boolean(formData.lastName),
+            has_phone: Boolean(formData.phoneNumber)
+          });
+          
+          // Identify the user for future tracking
+          analyticsService.identify(formData.email, {
+            email: formData.email,
+            userName: formData.userName,
+            firstName: formData.firstName,
+            lastName: formData.lastName,
+            phoneNumber: formData.phoneNumber,
+            signupDate: new Date().toISOString()
+          });
+        }
+        
         navigate('/');
       })
       .catch(() => {
+        // Track failed registration
+        if (analyticsEnabled) {
+          analyticsService.trackEvent('registration_failed', {
+            reason: error
+          });
+        }
         // Error is handled in the slice
       });
   };
@@ -95,10 +152,15 @@ const Register: React.FC = () => {
   const displayError = validationError || error;
 
   return (
-    <Grid container component="main" sx={{ height: '100vh' }}>
-      <Grid
-        size={{ xs: false, sm: 4, md: 7 }}
+    <Box sx={{ 
+      display: 'flex',
+      height: '100vh',
+      flexDirection: { xs: 'column', sm: 'row' }
+    }}>
+      <Box
         sx={{
+          flex: { xs: 0, sm: 7 },
+          display: { xs: 'none', sm: 'block' },
           backgroundImage: 'url(https://source.unsplash.com/random?environment)',
           backgroundRepeat: 'no-repeat',
           backgroundColor: (t: Theme) =>
@@ -107,7 +169,12 @@ const Register: React.FC = () => {
           backgroundPosition: 'center',
         }}
       />
-      <Grid size={{ xs: 12, sm: 8, md: 5 }} component={Paper} elevation={6} square>
+      <Box 
+        component={Paper} 
+        elevation={6}
+        square
+        sx={{ flex: { xs: 12, sm: 5 } }}
+      >
         <Box
           sx={{
             my: 6,
@@ -131,8 +198,8 @@ const Register: React.FC = () => {
           )}
           
           <Box component="form" noValidate onSubmit={handleSubmit} sx={{ mt: 3 }}>
-            <Grid container spacing={2}>
-              <Grid size={{ xs: 12, sm: 6 }}>
+            <Stack spacing={2}>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
                 <TextField
                   autoComplete="given-name"
                   name="firstName"
@@ -144,8 +211,6 @@ const Register: React.FC = () => {
                   value={formData.firstName}
                   onChange={handleChange}
                 />
-              </Grid>
-              <Grid size={{ xs: 12, sm: 6 }}>
                 <TextField
                   required
                   fullWidth
@@ -156,81 +221,76 @@ const Register: React.FC = () => {
                   value={formData.lastName}
                   onChange={handleChange}
                 />
-              </Grid>
-              <Grid size={{ xs: 12 }}>
-                <TextField
-                  required
-                  fullWidth
-                  id="userName"
-                  label="Username"
-                  name="userName"
-                  autoComplete="username"
-                  value={formData.userName}
-                  onChange={handleChange}
-                />
-              </Grid>
-              <Grid size={{ xs: 12 }}>
-                <TextField
-                  required
-                  fullWidth
-                  id="email"
-                  label="Email Address"
-                  name="email"
-                  autoComplete="email"
-                  value={formData.email}
-                  onChange={handleChange}
-                />
-              </Grid>
-              <Grid size={{ xs: 12 }}>
-                <TextField
-                  required
-                  fullWidth
-                  name="password"
-                  label="Password"
-                  type="password"
-                  id="password"
-                  autoComplete="new-password"
-                  value={formData.password}
-                  onChange={handleChange}
-                />
-              </Grid>
-              <Grid size={{ xs: 12 }}>
-                <TextField
-                  required
-                  fullWidth
-                  name="confirmPassword"
-                  label="Confirm Password"
-                  type="password"
-                  id="confirmPassword"
-                  value={formData.confirmPassword}
-                  onChange={handleChange}
-                />
-              </Grid>
-              <Grid size={{ xs: 12 }}>
-                <TextField
-                  fullWidth
-                  name="phoneNumber"
-                  label="Phone Number"
-                  id="phoneNumber"
-                  autoComplete="tel"
-                  value={formData.phoneNumber}
-                  onChange={handleChange}
-                />
-              </Grid>
-              <Grid size={{ xs: 12 }}>
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      name="termsAndConditions"
-                      checked={formData.termsAndConditions}
-                      onChange={handleChange}
-                      color="primary"
-                    />
-                  }
-                  label="I agree to the Terms and Conditions"
-                />
-              </Grid>
-            </Grid>
+              </Stack>
+              
+              <TextField
+                required
+                fullWidth
+                id="userName"
+                label="Username"
+                name="userName"
+                autoComplete="username"
+                value={formData.userName}
+                onChange={handleChange}
+              />
+              
+              <TextField
+                required
+                fullWidth
+                id="email"
+                label="Email Address"
+                name="email"
+                autoComplete="email"
+                value={formData.email}
+                onChange={handleChange}
+              />
+              
+              <TextField
+                required
+                fullWidth
+                name="password"
+                label="Password"
+                type="password"
+                id="password"
+                autoComplete="new-password"
+                value={formData.password}
+                onChange={handleChange}
+              />
+              
+              <TextField
+                required
+                fullWidth
+                name="confirmPassword"
+                label="Confirm Password"
+                type="password"
+                id="confirmPassword"
+                value={formData.confirmPassword}
+                onChange={handleChange}
+              />
+              
+              <TextField
+                fullWidth
+                name="phoneNumber"
+                label="Phone Number"
+                id="phoneNumber"
+                autoComplete="tel"
+                value={formData.phoneNumber}
+                onChange={handleChange}
+              />
+              
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    name="termsAndConditions"
+                    checked={formData.termsAndConditions}
+                    onChange={handleChange}
+                    color="primary"
+                  />
+                }
+                label="I agree to the Terms and Conditions"
+              />
+            </Stack>
+            
             <Button
               type="submit"
               fullWidth
@@ -240,17 +300,16 @@ const Register: React.FC = () => {
             >
               {loading ? 'Signing up...' : 'Sign Up'}
             </Button>
-            <Grid container justifyContent="flex-end">
-              <Grid size="auto">
-                <Link component={RouterLink} to="/login" variant="body2">
-                  Already have an account? Sign in
-                </Link>
-              </Grid>
-            </Grid>
+            
+            <Box display="flex" justifyContent="flex-end">
+              <Link component={RouterLink} to="/login" variant="body2">
+                Already have an account? Sign in
+              </Link>
+            </Box>
           </Box>
         </Box>
-      </Grid>
-    </Grid>
+      </Box>
+    </Box>
   );
 };
 

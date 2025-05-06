@@ -34,6 +34,8 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { useNotifications } from '../contexts/NotificationContext';
 import LanguageSelector from '../components/LanguageSelector';
+import { useAppSelector } from '../store/hooks';
+import analyticsService from '../services/analytics';
 
 const drawerWidth = 240;
 
@@ -45,6 +47,7 @@ const MainLayout: React.FC = () => {
   
   const { user, logout } = useAuth();
   const { notifications, unreadCount, markAsRead } = useNotifications();
+  const { enabled: analyticsEnabled } = useAppSelector(state => state.analytics);
   const navigate = useNavigate();
 
   const handleDrawerToggle = () => {
@@ -68,6 +71,18 @@ const MainLayout: React.FC = () => {
   };
 
   const handleLogout = () => {
+    // Track logout event before actually logging out
+    if (analyticsEnabled && user) {
+      analyticsService.trackEvent('logout', {
+        userId: user.id,
+        userName: user.userName
+      });
+      
+      // Reset user identity in analytics after tracking the logout
+      analyticsService.reset();
+    }
+    
+    // Logout from auth context
     logout();
     navigate('/login');
   };

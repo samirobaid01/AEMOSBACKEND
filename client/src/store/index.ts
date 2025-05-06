@@ -6,12 +6,14 @@ import storage from 'redux-persist/lib/storage';
 import authReducer from './slices/authSlice';
 import uiReducer from './slices/uiSlice';
 import languageReducer from './slices/languageSlice';
+import analyticsReducer from './slices/analyticsSlice';
 
 // Create a root reducer with all our feature reducers
 const rootReducer = combineReducers({
   auth: authReducer,
   ui: uiReducer,
   language: languageReducer,
+  analytics: analyticsReducer,
   // Add more slices here as we create them
 });
 
@@ -19,7 +21,7 @@ const rootReducer = combineReducers({
 const persistConfig = {
   key: 'aemos-root',
   storage,
-  whitelist: ['auth', 'ui', 'language'], // Only persist these slices
+  whitelist: ['auth', 'ui', 'language', 'analytics'], // Only persist these slices
 };
 
 // Create the persisted reducer

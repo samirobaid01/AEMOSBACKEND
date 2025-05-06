@@ -107,6 +107,12 @@
       "title": "Tema",
       "light": "Claro",
       "dark": "Oscuro"
+    },
+    "analytics": {
+      "title": "Analíticas",
+      "enabled": "Activado",
+      "disabled": "Desactivado",
+      "description": "Ayúdanos a mejorar permitiendo la recopilación anónima de datos de uso."
     }
   },
   "common": {

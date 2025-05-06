@@ -6,20 +6,26 @@ import {
   Divider,
   Switch,
   FormControlLabel,
-  Grid,
+  Stack,
 } from '@mui/material';
 import { useTranslation } from 'react-i18next';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { toggleTheme } from '../../store/slices/uiSlice';
+import { setAnalyticsEnabled } from '../../store/slices/analyticsSlice';
 import LanguageSelector from '../../components/LanguageSelector';
 
 const Settings: React.FC = () => {
   const { t } = useTranslation();
   const dispatch = useAppDispatch();
   const { theme } = useAppSelector((state) => state.ui);
+  const { enabled: analyticsEnabled } = useAppSelector((state) => state.analytics);
 
   const handleThemeChange = () => {
     dispatch(toggleTheme());
+  };
+
+  const handleAnalyticsChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    dispatch(setAnalyticsEnabled(event.target.checked));
   };
 
   return (
@@ -28,9 +34,9 @@ const Settings: React.FC = () => {
         {t('settings.title')}
       </Typography>
 
-      <Grid container spacing={3}>
+      <Stack direction={{ xs: 'column', md: 'row' }} spacing={3}>
         {/* Preferences Section */}
-        <Grid size={{ xs: 12, md: 6 }}>
+        <Box sx={{ flex: 1 }}>
           <Paper sx={{ p: 3, mb: 3 }}>
             <Typography variant="h6" gutterBottom>
               {t('settings.preferences')}
@@ -46,7 +52,7 @@ const Settings: React.FC = () => {
             </Box>
 
             {/* Theme Setting */}
-            <Box>
+            <Box sx={{ mb: 3 }}>
               <Typography variant="subtitle1" gutterBottom>
                 {t('settings.theme.title')}
               </Typography>
@@ -65,11 +71,39 @@ const Settings: React.FC = () => {
                 )}
               />
             </Box>
+
+            {/* Analytics Setting */}
+            <Box>
+              <Typography variant="subtitle1" gutterBottom>
+                {t('settings.analytics.title', 'Analytics')}
+              </Typography>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={analyticsEnabled}
+                    onChange={handleAnalyticsChange}
+                    color="primary"
+                  />
+                }
+                label={t(
+                  analyticsEnabled
+                    ? 'settings.analytics.enabled'
+                    : 'settings.analytics.disabled',
+                  analyticsEnabled ? 'Enabled' : 'Disabled'
+                )}
+              />
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                {t(
+                  'settings.analytics.description',
+                  'Help us improve by allowing anonymous usage data collection.'
+                )}
+              </Typography>
+            </Box>
           </Paper>
-        </Grid>
+        </Box>
 
         {/* Account Settings Section */}
-        <Grid size={{ xs: 12, md: 6 }}>
+        <Box sx={{ flex: 1 }}>
           <Paper sx={{ p: 3, mb: 3 }}>
             <Typography variant="h6" gutterBottom>
               {t('settings.account')}
@@ -92,8 +126,8 @@ const Settings: React.FC = () => {
               Notification settings will be implemented in a future update.
             </Typography>
           </Paper>
-        </Grid>
-      </Grid>
+        </Box>
+      </Stack>
     </Box>
   );
 };

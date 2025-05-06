@@ -11,12 +11,13 @@ import {
   Box,
   Typography,
   Alert,
-  Grid,
+  Stack,
 } from '@mui/material';
 import type { Theme } from '@mui/material/styles';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { login, clearError } from '../../store/slices/authSlice';
+import analyticsService from '../../services/analytics';
 
 const Login: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -25,6 +26,7 @@ const Login: React.FC = () => {
   
   const dispatch = useAppDispatch();
   const { loading, error, isAuthenticated } = useAppSelector(state => state.auth);
+  const { enabled: analyticsEnabled } = useAppSelector(state => state.analytics);
   const navigate = useNavigate();
 
   // Clear any errors when component mounts
@@ -47,22 +49,57 @@ const Login: React.FC = () => {
       return;
     }
     
+    // Track login attempt if analytics is enabled
+    if (analyticsEnabled) {
+      analyticsService.trackEvent('login_attempt', {
+        method: 'email',
+        has_email: Boolean(email),
+        remember_me: rememberMe
+      });
+    }
+    
     // Dispatch login action
     dispatch(login({ email, password }))
       .unwrap()
       .then(() => {
+        // Track successful login
+        if (analyticsEnabled) {
+          analyticsService.trackEvent('login_success', {
+            method: 'email'
+          });
+          
+          // Identify the user for future tracking
+          analyticsService.identify(email, {
+            email,
+            $name: email.split('@')[0],
+            loginDate: new Date().toISOString()
+          });
+        }
+        
         navigate('/');
       })
       .catch(() => {
+        // Track failed login
+        if (analyticsEnabled) {
+          analyticsService.trackEvent('login_failed', {
+            method: 'email',
+            reason: error
+          });
+        }
         // Error is handled in the slice
       });
   };
 
   return (
-    <Grid container component="main" sx={{ height: '100vh' }}>
-      <Grid
-        size={{ xs: false, sm: 4, md: 7 }}
+    <Box sx={{ 
+      display: 'flex',
+      height: '100vh',
+      flexDirection: { xs: 'column', sm: 'row' }
+    }}>
+      <Box
         sx={{
+          flex: { xs: 0, sm: 7 },
+          display: { xs: 'none', sm: 'block' },
           backgroundImage: 'url(https://source.unsplash.com/random?hydroponics)',
           backgroundRepeat: 'no-repeat',
           backgroundColor: (t: Theme) =>
@@ -71,11 +108,11 @@ const Login: React.FC = () => {
           backgroundPosition: 'center',
         }}
       />
-      <Grid 
-        size={{ xs: 12, sm: 8, md: 5 }} 
+      <Box 
         component={Paper} 
-        elevation={6} 
+        elevation={6}
         square
+        sx={{ flex: { xs: 12, sm: 5 } }}
       >
         <Box
           sx={{
@@ -144,18 +181,14 @@ const Login: React.FC = () => {
             >
               {loading ? 'Signing in...' : 'Sign In'}
             </Button>
-            <Grid container>
-              <Grid size="grow">
-                <Link component={RouterLink} to="/forgot-password" variant="body2">
-                  Forgot password?
-                </Link>
-              </Grid>
-              <Grid size="auto">
-                <Link component={RouterLink} to="/signup" variant="body2">
-                  {"Don't have an account? Sign Up"}
-                </Link>
-              </Grid>
-            </Grid>
+            <Stack direction="row" justifyContent="space-between">
+              <Link component={RouterLink} to="/forgot-password" variant="body2">
+                Forgot password?
+              </Link>
+              <Link component={RouterLink} to="/signup" variant="body2">
+                {"Don't have an account? Sign Up"}
+              </Link>
+            </Stack>
             <Box mt={5}>
               <Typography variant="body2" color="text.secondary" align="center">
                 {'Copyright © AEMOS '}
@@ -164,8 +197,8 @@ const Login: React.FC = () => {
             </Box>
           </Box>
         </Box>
-      </Grid>
-    </Grid>
+      </Box>
+    </Box>
   );
 };
 

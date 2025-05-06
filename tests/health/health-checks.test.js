@@ -7,6 +7,7 @@ describe('Health Check Endpoints', () => {
   it('should return 200 OK for basic health check', async () => {
     const response = await request(app).get('/api/v1/health');
     console.log("Health check response status:", response.status);
+    console.log("Health check response body:", response.body);
     expect(response.status).toBe(200);
     expect(response.body.status).toBe('ok');
   });

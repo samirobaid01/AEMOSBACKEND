@@ -1,11 +1,17 @@
 const express = require('express');
 const cors = require('cors');
-const routes = require('./routes');
+const authRoutes = require('./routes/authRoutes');
+const deviceRoutes = require('./routes/deviceRoutes');
+const organizationRoutes = require('./routes/organizationRoutes');
+const areaRoutes = require('./routes/areaRoutes');
+const sensorRoutes = require('./routes/sensorRoutes');
 const { errorHandler } = require('./middlewares/errorHandler');
 const logger = require('./utils/logger');
 const features = require('./config/features');
 const compression = require('compression');
 const responseTime = require('response-time');
+// Import sequelize for the health check
+const sequelize = require('./config/database');
 
 // Initialize Express app
 const app = express();
@@ -23,7 +29,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// Conditionally apply middleware based on configuration
+// Apply middleware based on configuration
 if (features.security.helmet) {
   const helmet = require('helmet');
   app.use(helmet());
@@ -62,8 +68,51 @@ if (features.performance.responseTime.enabled) {
   logger.info(`Response time tracking enabled (threshold: ${features.performance.responseTime.threshold}ms)`);
 }
 
-// Mount routes
-app.use('/api/v1', routes);
+// API health check route
+app.get('/api/v1/health', async (req, res) => {
+  const checks = {
+    status: 'ok',
+    timestamp: new Date(),
+    services: {
+      database: { status: 'checking' }
+    }
+  };
+  
+  try {
+    await sequelize.authenticate();
+    checks.services.database.status = 'ok';
+  } catch (error) {
+    checks.services.database.status = 'error';
+    checks.services.database.message = error.message;
+    checks.status = 'error';
+  }
+  
+  const statusCode = checks.status === 'ok' ? 200 : 500;
+  res.status(statusCode).json(checks);
+});
+
+app.get('/api/v1/health/ready', (req, res) => {
+  res.status(200).json({ status: 'ready' });
+});
+
+app.get('/api/v1/health/live', (req, res) => {
+  res.status(200).json({ status: 'alive' });
+});
+
+// Mount API routes
+app.use('/api/v1/auth', authRoutes);
+app.use('/api/v1/devices', deviceRoutes);
+app.use('/api/v1/organizations', organizationRoutes);
+app.use('/api/v1/areas', areaRoutes);
+app.use('/api/v1/sensors', sensorRoutes);
+
+// Handle undefined routes
+app.use('*', (req, res) => {
+  res.status(404).json({
+    status: 'error',
+    message: `Cannot find ${req.originalUrl} on this server!`
+  });
+});
 
 // Global error handler
 app.use(errorHandler);

@@ -114,7 +114,7 @@ describe('Device API Endpoints', () => {
       expect(response.body.data.device).toEqual(mockCreatedDevice);
     });
 
-    it.skip('should return 400 for invalid input', async () => {
+    it('should return 400 for invalid input', async () => {
       // Arrange
       const invalidData = { /* missing required name */ };
 

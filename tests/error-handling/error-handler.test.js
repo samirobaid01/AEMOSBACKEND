@@ -16,8 +16,8 @@ describe('Error Handler Middleware', () => {
   });
 
   it('should format error responses consistently', async () => {
-    const response = await request(app).get('/api/v1/test-error/400');
-    expect(response.status).toBe(400);
+    const response = await request(app).get('/api/v1/test-error/404');
+    expect(response.status).toBe(404);
     expect(response.body).toHaveProperty('status');
     expect(response.body).toHaveProperty('message');
   });

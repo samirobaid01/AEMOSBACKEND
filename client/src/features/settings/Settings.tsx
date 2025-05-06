@@ -7,11 +7,13 @@ import {
   Switch,
   FormControlLabel,
   Stack,
+  Button,
 } from '@mui/material';
 import { useTranslation } from 'react-i18next';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { toggleTheme } from '../../store/slices/uiSlice';
 import { setAnalyticsEnabled } from '../../store/slices/analyticsSlice';
+import { resetWalkthrough, setEnabled as setWalkthroughEnabled } from '../../store/slices/walkthroughSlice';
 import LanguageSelector from '../../components/LanguageSelector';
 
 const Settings: React.FC = () => {
@@ -19,6 +21,7 @@ const Settings: React.FC = () => {
   const dispatch = useAppDispatch();
   const { theme } = useAppSelector((state) => state.ui);
   const { enabled: analyticsEnabled } = useAppSelector((state) => state.analytics);
+  const { enabled: walkthroughEnabled, completed: walkthroughCompleted } = useAppSelector((state: any) => state.walkthrough);
 
   const handleThemeChange = () => {
     dispatch(toggleTheme());
@@ -26,6 +29,14 @@ const Settings: React.FC = () => {
 
   const handleAnalyticsChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     dispatch(setAnalyticsEnabled(event.target.checked));
+  };
+
+  const handleWalkthroughEnabledChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    dispatch(setWalkthroughEnabled(event.target.checked));
+  };
+
+  const handleResetWalkthrough = () => {
+    dispatch(resetWalkthrough());
   };
 
   return (
@@ -73,7 +84,7 @@ const Settings: React.FC = () => {
             </Box>
 
             {/* Analytics Setting */}
-            <Box>
+            <Box sx={{ mb: 3 }}>
               <Typography variant="subtitle1" gutterBottom>
                 {t('settings.analytics.title', 'Analytics')}
               </Typography>
@@ -98,6 +109,44 @@ const Settings: React.FC = () => {
                   'Help us improve by allowing anonymous usage data collection.'
                 )}
               </Typography>
+            </Box>
+
+            {/* Walkthrough Settings */}
+            <Box>
+              <Typography variant="subtitle1" gutterBottom>
+                {t('settings.walkthrough.title', 'Application Walkthrough')}
+              </Typography>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={walkthroughEnabled}
+                    onChange={handleWalkthroughEnabledChange}
+                    color="primary"
+                  />
+                }
+                label={t(
+                  walkthroughEnabled
+                    ? 'settings.walkthrough.enabled'
+                    : 'settings.walkthrough.disabled',
+                  walkthroughEnabled ? 'Enabled' : 'Disabled'
+                )}
+              />
+              <Box sx={{ mt: 2 }}>
+                <Button
+                  variant="outlined"
+                  onClick={handleResetWalkthrough}
+                  size="small"
+                  disabled={!walkthroughCompleted}
+                >
+                  {t('settings.walkthrough.reset', 'Reset Walkthrough')}
+                </Button>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                  {t(
+                    'settings.walkthrough.description',
+                    'Reset the application walkthrough to see it again on your next login.'
+                  )}
+                </Typography>
+              </Box>
             </Box>
           </Paper>
         </Box>

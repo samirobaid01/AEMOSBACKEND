@@ -113,6 +113,37 @@
       "enabled": "Enabled",
       "disabled": "Disabled",
       "description": "Help us improve by allowing anonymous usage data collection."
+    },
+    "walkthrough": {
+      "title": "Application Walkthrough",
+      "reset": "Reset Walkthrough",
+      "enabled": "Enabled",
+      "disabled": "Disabled",
+      "description": "Reset the application walkthrough to see it again on your next login."
+    }
+  },
+  "walkthrough": {
+    "steps": {
+      "dashboard": {
+        "title": "Dashboard",
+        "content": "This is your main dashboard where you can see all your devices and sensors at a glance."
+      },
+      "devices": {
+        "title": "Devices",
+        "content": "View and manage all your connected devices here."
+      },
+      "sensors": {
+        "title": "Sensors",
+        "content": "Monitor all sensor readings and configure alerts."
+      },
+      "language": {
+        "title": "Language",
+        "content": "Change the application language here."
+      },
+      "settings": {
+        "title": "Settings",
+        "content": "Configure your account preferences and application settings."
+      }
     }
   },
   "common": {
@@ -126,6 +157,11 @@
     "search": "Search",
     "filter": "Filter",
     "refresh": "Refresh",
+    "back": "Back",
+    "next": "Next",
+    "finish": "Finish",
+    "skip": "Skip",
+    "close": "Close",
     "status": {
       "online": "Online",
       "offline": "Offline",

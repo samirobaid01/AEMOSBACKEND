@@ -1,54 +1,63 @@
-# React + TypeScript + Vite
+# AEMOS Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Frontend application for the Automated Environmental Monitoring & Operations System (AEMOS).
 
-Currently, two official plugins are available:
+## Development
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+```bash
+# Install dependencies
+npm install
 
-## Expanding the ESLint configuration
+# Run client development server only
+npm run dev
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default tseslint.config({
-  extends: [
-    // Remove ...tseslint.configs.recommended and replace with this
-    ...tseslint.configs.recommendedTypeChecked,
-    // Alternatively, use this for stricter rules
-    ...tseslint.configs.strictTypeChecked,
-    // Optionally, add this for stylistic rules
-    ...tseslint.configs.stylisticTypeChecked,
-  ],
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
+# Build for production
+npm run build
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### Running Full Stack (Client & Server)
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+To run both the frontend and backend concurrently, use the root project command:
 
-export default tseslint.config({
-  plugins: {
-    // Add the react-x and react-dom plugins
-    'react-x': reactX,
-    'react-dom': reactDom,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended typescript rules
-    ...reactX.configs['recommended-typescript'].rules,
-    ...reactDom.configs.recommended.rules,
-  },
-})
+```bash
+# From the project root directory (not client directory)
+npm run dev
 ```
+
+This will start both:
+- The React frontend on http://localhost:5174 (or another available port)
+- The Express backend API on http://localhost:3000
+
+## Features
+
+### Walkthrough
+The application includes a guided walkthrough feature to help users navigate the system. This is implemented using `react-joyride` v3.0.0-7 which is compatible with React 19.
+
+Key components:
+- `client/src/components/Walkthrough.tsx` - Main component that displays the tour
+- `client/src/config/walkthrough.ts` - Configuration of tour steps
+- `client/src/store/slices/walkthroughSlice.ts` - Redux state management
+- `client/src/services/walkthroughService.ts` - API integration
+- `client/src/mocks/handlers.ts` - Mock API handlers for development
+
+The walkthrough can be:
+- Enabled/disabled in the settings
+- Reset for new users
+- Configured with different steps
+- Translated to multiple languages
+
+### Analytics
+The application includes analytics tracking using Mixpanel.
+
+### Internationalization
+The application supports multiple languages using i18next.
+
+## Technologies
+- React 19
+- TypeScript
+- Redux Toolkit
+- Material UI v7
+- MSW v2 (for API mocking)
+- React Router
+- React Query
+- i18next

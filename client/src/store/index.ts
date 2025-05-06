@@ -7,6 +7,7 @@ import authReducer from './slices/authSlice';
 import uiReducer from './slices/uiSlice';
 import languageReducer from './slices/languageSlice';
 import analyticsReducer from './slices/analyticsSlice';
+import walkthroughReducer from './slices/walkthroughSlice';
 
 // Create a root reducer with all our feature reducers
 const rootReducer = combineReducers({
@@ -14,6 +15,7 @@ const rootReducer = combineReducers({
   ui: uiReducer,
   language: languageReducer,
   analytics: analyticsReducer,
+  walkthrough: walkthroughReducer,
   // Add more slices here as we create them
 });
 
@@ -21,7 +23,7 @@ const rootReducer = combineReducers({
 const persistConfig = {
   key: 'aemos-root',
   storage,
-  whitelist: ['auth', 'ui', 'language', 'analytics'], // Only persist these slices
+  whitelist: ['auth', 'ui', 'language', 'analytics', 'walkthrough'], // Only persist these slices
 };
 
 // Create the persisted reducer

@@ -113,6 +113,37 @@
       "enabled": "Activado",
       "disabled": "Desactivado",
       "description": "Ayúdanos a mejorar permitiendo la recopilación anónima de datos de uso."
+    },
+    "walkthrough": {
+      "title": "Recorrido de la Aplicación",
+      "reset": "Reiniciar Recorrido",
+      "enabled": "Activado",
+      "disabled": "Desactivado",
+      "description": "Reinicia el recorrido de la aplicación para verlo de nuevo en tu próximo inicio de sesión."
+    }
+  },
+  "walkthrough": {
+    "steps": {
+      "dashboard": {
+        "title": "Panel de Control",
+        "content": "Este es tu panel principal donde puedes ver todos tus dispositivos y sensores de un vistazo."
+      },
+      "devices": {
+        "title": "Dispositivos",
+        "content": "Visualiza y administra todos tus dispositivos conectados aquí."
+      },
+      "sensors": {
+        "title": "Sensores",
+        "content": "Monitorea todas las lecturas de sensores y configura alertas."
+      },
+      "language": {
+        "title": "Idioma",
+        "content": "Cambia el idioma de la aplicación aquí."
+      },
+      "settings": {
+        "title": "Configuración",
+        "content": "Configura las preferencias de tu cuenta y ajustes de la aplicación."
+      }
     }
   },
   "common": {
@@ -126,6 +157,11 @@
     "search": "Buscar",
     "filter": "Filtrar",
     "refresh": "Actualizar",
+    "back": "Atrás",
+    "next": "Siguiente",
+    "finish": "Finalizar",
+    "skip": "Omitir",
+    "close": "Cerrar",
     "status": {
       "online": "En Línea",
       "offline": "Fuera de Línea",

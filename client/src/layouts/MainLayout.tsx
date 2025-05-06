@@ -106,7 +106,7 @@ const MainLayout: React.FC = () => {
     { text: t('sensors.title'), icon: <SensorsIcon />, path: '/sensors' },
     { text: t('organizations.title', 'Organizations'), icon: <OrganizationIcon />, path: '/organizations' },
     { text: t('notifications.title'), icon: <NotificationsIcon />, path: '/notifications' },
-    { text: t('settings.title'), icon: <SettingsIcon />, path: '/settings' },
+    { text: t('settings.title'), icon: <SettingsIcon />, path: '/settings', 'data-tour': 'settings' },
   ];
 
   const drawer = (
@@ -155,7 +155,7 @@ const MainLayout: React.FC = () => {
           </Typography>
 
           {/* Language Selector */}
-          <Box sx={{ mr: 2 }}>
+          <Box sx={{ mr: 2 }} data-tour="language">
             <LanguageSelector 
               variant="standard" 
               size="small" 

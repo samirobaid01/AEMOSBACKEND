@@ -16,6 +16,9 @@ import {
 } from '@mui/material';
 import apiClient from '../../api/apiClient';
 import { useAuth } from '../../contexts/AuthContext';
+import { useAppDispatch, useAppSelector } from '../../store/hooks';
+import { openWalkthrough } from '../../store/slices/walkthroughSlice';
+import Walkthrough from '../../components/Walkthrough';
 
 // Placeholder for device stats data structure
 type DeviceStats = {
@@ -43,6 +46,21 @@ interface WeatherData {
 
 const Dashboard: React.FC = () => {
   const { user } = useAuth();
+  const dispatch = useAppDispatch();
+  const { isAuthenticated } = useAppSelector((state) => state.auth);
+  const { enabled, completed } = useAppSelector((state: any) => state.walkthrough);
+  
+  // Open walkthrough automatically after login if not completed
+  useEffect(() => {
+    if (isAuthenticated && enabled && !completed) {
+      // Slight delay to ensure UI is fully loaded
+      const timer = setTimeout(() => {
+        dispatch(openWalkthrough());
+      }, 1500);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [isAuthenticated, enabled, completed, dispatch]);
   
   // Fetch device stats
   const {
@@ -130,7 +148,7 @@ const Dashboard: React.FC = () => {
 
   return (
     <Box>
-      <Typography variant="h4" gutterBottom>
+      <Typography variant="h4" gutterBottom data-tour="dashboard">
         Dashboard
       </Typography>
       
@@ -141,7 +159,7 @@ const Dashboard: React.FC = () => {
       <Grid container spacing={3}>
         {/* Device Status */}
         <Grid size={{ xs: 12, md: 6 }}>
-          <Paper elevation={2} sx={{ p: 2 }}>
+          <Paper elevation={2} sx={{ p: 2 }} data-tour="devices">
             <Typography variant="h6" gutterBottom>
               Device Status
             </Typography>
@@ -197,7 +215,7 @@ const Dashboard: React.FC = () => {
         
         {/* Sensor Status */}
         <Grid size={{ xs: 12, md: 6 }}>
-          <Paper elevation={2} sx={{ p: 2 }}>
+          <Paper elevation={2} sx={{ p: 2 }} data-tour="sensors">
             <Typography variant="h6" gutterBottom>
               Sensor Status
             </Typography>
@@ -322,6 +340,9 @@ const Dashboard: React.FC = () => {
           </Paper>
         </Grid>
       </Grid>
+      
+      {/* Walkthrough component */}
+      <Walkthrough />
     </Box>
   );
 };

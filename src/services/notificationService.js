@@ -136,7 +136,7 @@ const sendUserWelcomeNotifications = async (user) => {
 
   // Send SMS notification if enabled for user
   if (user.notifyBySMS) {
-    const message = `Welcome to AEMOS! Your account has been created successfully.`;
+    const message = 'Welcome to AEMOS! Your account has been created successfully.';
     
     results.sms = await sendSMSNotification(user, message);
   }

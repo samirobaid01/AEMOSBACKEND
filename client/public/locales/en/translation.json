@@ -1,0 +1,140 @@
+{
+  "app": {
+    "name": "AEMOS",
+    "fullName": "Automated Environmental Monitoring & Operations System",
+    "tagline": "Smart monitoring for a sustainable future"
+  },
+  "auth": {
+    "login": "Sign In",
+    "register": "Sign Up",
+    "logout": "Logout",
+    "forgotPassword": "Forgot password?",
+    "noAccount": "Don't have an account? Sign Up",
+    "alreadyAccount": "Already have an account? Sign in",
+    "emailAddress": "Email Address",
+    "password": "Password",
+    "confirmPassword": "Confirm Password",
+    "rememberMe": "Remember me",
+    "username": "Username",
+    "firstName": "First Name",
+    "lastName": "Last Name",
+    "phoneNumber": "Phone Number",
+    "termsAndConditions": "I agree to the Terms and Conditions"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "welcome": "Welcome, {{name}}!",
+    "summary": "System Summary",
+    "devices": {
+      "total": "Total Devices",
+      "online": "Online Devices",
+      "offline": "Offline Devices"
+    },
+    "sensors": {
+      "total": "Total Sensors",
+      "active": "Active Sensors",
+      "alerts": "Sensors with Alerts"
+    },
+    "weather": {
+      "title": "Weather Conditions",
+      "temperature": "Temperature",
+      "humidity": "Humidity",
+      "conditions": "Conditions",
+      "forecast": "Forecast"
+    }
+  },
+  "devices": {
+    "title": "Devices",
+    "detail": "Device Details",
+    "create": "Add Device",
+    "edit": "Edit Device",
+    "delete": "Delete Device",
+    "id": "ID",
+    "name": "Name",
+    "type": "Type",
+    "location": "Location",
+    "status": "Status",
+    "lastSeen": "Last Seen",
+    "sensors": "Sensors",
+    "noDevices": "No devices found",
+    "confirmDelete": "Are you sure you want to delete this device?"
+  },
+  "sensors": {
+    "title": "Sensors",
+    "detail": "Sensor Details",
+    "create": "Add Sensor",
+    "edit": "Edit Sensor",
+    "delete": "Delete Sensor",
+    "id": "ID",
+    "name": "Name",
+    "type": "Type",
+    "device": "Device",
+    "value": "Current Value",
+    "unit": "Unit",
+    "status": "Status",
+    "lastReading": "Last Reading",
+    "noSensors": "No sensors found",
+    "confirmDelete": "Are you sure you want to delete this sensor?"
+  },
+  "organizations": {
+    "title": "Organizations",
+    "detail": "Organization Details",
+    "create": "Add Organization",
+    "edit": "Edit Organization",
+    "delete": "Delete Organization",
+    "id": "ID",
+    "name": "Name",
+    "address": "Address",
+    "contact": "Contact",
+    "noOrganizations": "No organizations found",
+    "confirmDelete": "Are you sure you want to delete this organization?"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "markRead": "Mark as Read",
+    "markAll": "Mark All as Read",
+    "delete": "Delete Notification",
+    "deleteAll": "Delete All",
+    "empty": "No notifications found"
+  },
+  "settings": {
+    "title": "Settings",
+    "account": "Account Settings",
+    "preferences": "Preferences",
+    "notifications": "Notification Settings",
+    "language": "Language",
+    "theme": {
+      "title": "Theme",
+      "light": "Light",
+      "dark": "Dark"
+    }
+  },
+  "common": {
+    "loading": "Loading...",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "view": "View",
+    "search": "Search",
+    "filter": "Filter",
+    "refresh": "Refresh",
+    "status": {
+      "online": "Online",
+      "offline": "Offline",
+      "active": "Active",
+      "inactive": "Inactive",
+      "error": "Error",
+      "warning": "Warning"
+    },
+    "error": {
+      "occurred": "An error has occurred",
+      "tryAgain": "Please try again"
+    }
+  },
+  "languages": {
+    "en": "English",
+    "es": "Spanish"
+  }
+} 

@@ -10,14 +10,20 @@ const logger = require('./utils/logger');
 const features = require('./config/features');
 const compression = require('compression');
 const responseTime = require('response-time');
-// Import sequelize for the health check
 const sequelize = require('./config/database');
+const helmet = require('helmet');
+const hpp = require('hpp');
+const mongoSanitize = require('express-mongo-sanitize');
+const path = require('path');
 
 // Initialize Express app
 const app = express();
 
-// Enable CORS for all routes
-app.use(cors());
+// Enable CORS with specific configuration
+app.use(cors({
+  origin: ['http://localhost:5173', 'http://127.0.0.1:5173'],
+  credentials: true
+}));
 
 // Body parser middleware
 app.use(express.json({ limit: '10mb' }));
@@ -31,20 +37,25 @@ app.use((req, res, next) => {
 
 // Apply middleware based on configuration
 if (features.security.helmet) {
-  const helmet = require('helmet');
-  app.use(helmet());
+  app.use(helmet({
+    contentSecurityPolicy: {
+      directives: {
+        ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+        'script-src': ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+        'img-src': ["'self'", 'data:', 'blob:'],
+      },
+    },
+  }));
   logger.info('Helmet security headers enabled');
 }
 
 if (features.security.hpp) {
-  const hpp = require('hpp');
   app.use(hpp());
   logger.info('HTTP Parameter Pollution protection enabled');
 }
 
 if (features.security.rateLimit.enabled) {
-  const { rateLimit } = require('express-rate-limit');
-  const limiter = rateLimit({
+  const limiter = require('express-rate-limit')({
     windowMs: features.security.rateLimit.windowMs,
     max: features.security.rateLimit.max,
     standardHeaders: true,
@@ -116,5 +127,18 @@ app.use('*', (req, res) => {
 
 // Global error handler
 app.use(errorHandler);
+
+// Serve static files from the React app in production
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static(path.join(__dirname, '../client/dist')));
+
+  // Handle React routing, return all requests to React app
+  app.get('*', (req, res) => {
+    // Exclude API routes from the catch-all
+    if (!req.path.startsWith('/api/')) {
+      res.sendFile(path.join(__dirname, '../client/dist/index.html'));
+    }
+  });
+}
 
 module.exports = app; 

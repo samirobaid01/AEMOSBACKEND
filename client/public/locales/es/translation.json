@@ -1,0 +1,140 @@
+{
+  "app": {
+    "name": "AEMOS",
+    "fullName": "Sistema Automatizado de Monitoreo y Operaciones Ambientales",
+    "tagline": "Monitoreo inteligente para un futuro sostenible"
+  },
+  "auth": {
+    "login": "Iniciar Sesión",
+    "register": "Registrarse",
+    "logout": "Cerrar Sesión",
+    "forgotPassword": "¿Olvidó su contraseña?",
+    "noAccount": "¿No tiene una cuenta? Regístrese",
+    "alreadyAccount": "¿Ya tiene una cuenta? Inicie sesión",
+    "emailAddress": "Correo Electrónico",
+    "password": "Contraseña",
+    "confirmPassword": "Confirmar Contraseña",
+    "rememberMe": "Recordarme",
+    "username": "Nombre de Usuario",
+    "firstName": "Nombre",
+    "lastName": "Apellido",
+    "phoneNumber": "Número de Teléfono",
+    "termsAndConditions": "Acepto los Términos y Condiciones"
+  },
+  "dashboard": {
+    "title": "Panel de Control",
+    "welcome": "¡Bienvenido, {{name}}!",
+    "summary": "Resumen del Sistema",
+    "devices": {
+      "total": "Dispositivos Totales",
+      "online": "Dispositivos en Línea",
+      "offline": "Dispositivos Fuera de Línea"
+    },
+    "sensors": {
+      "total": "Sensores Totales",
+      "active": "Sensores Activos",
+      "alerts": "Sensores con Alertas"
+    },
+    "weather": {
+      "title": "Condiciones Meteorológicas",
+      "temperature": "Temperatura",
+      "humidity": "Humedad",
+      "conditions": "Condiciones",
+      "forecast": "Pronóstico"
+    }
+  },
+  "devices": {
+    "title": "Dispositivos",
+    "detail": "Detalles del Dispositivo",
+    "create": "Añadir Dispositivo",
+    "edit": "Editar Dispositivo",
+    "delete": "Eliminar Dispositivo",
+    "id": "ID",
+    "name": "Nombre",
+    "type": "Tipo",
+    "location": "Ubicación",
+    "status": "Estado",
+    "lastSeen": "Última Conexión",
+    "sensors": "Sensores",
+    "noDevices": "No se encontraron dispositivos",
+    "confirmDelete": "¿Está seguro de que desea eliminar este dispositivo?"
+  },
+  "sensors": {
+    "title": "Sensores",
+    "detail": "Detalles del Sensor",
+    "create": "Añadir Sensor",
+    "edit": "Editar Sensor",
+    "delete": "Eliminar Sensor",
+    "id": "ID",
+    "name": "Nombre",
+    "type": "Tipo",
+    "device": "Dispositivo",
+    "value": "Valor Actual",
+    "unit": "Unidad",
+    "status": "Estado",
+    "lastReading": "Última Lectura",
+    "noSensors": "No se encontraron sensores",
+    "confirmDelete": "¿Está seguro de que desea eliminar este sensor?"
+  },
+  "organizations": {
+    "title": "Organizaciones",
+    "detail": "Detalles de la Organización",
+    "create": "Añadir Organización",
+    "edit": "Editar Organización",
+    "delete": "Eliminar Organización",
+    "id": "ID",
+    "name": "Nombre",
+    "address": "Dirección",
+    "contact": "Contacto",
+    "noOrganizations": "No se encontraron organizaciones",
+    "confirmDelete": "¿Está seguro de que desea eliminar esta organización?"
+  },
+  "notifications": {
+    "title": "Notificaciones",
+    "markRead": "Marcar como Leído",
+    "markAll": "Marcar Todo como Leído",
+    "delete": "Eliminar Notificación",
+    "deleteAll": "Eliminar Todo",
+    "empty": "No se encontraron notificaciones"
+  },
+  "settings": {
+    "title": "Configuración",
+    "account": "Configuración de Cuenta",
+    "preferences": "Preferencias",
+    "notifications": "Configuración de Notificaciones",
+    "language": "Idioma",
+    "theme": {
+      "title": "Tema",
+      "light": "Claro",
+      "dark": "Oscuro"
+    }
+  },
+  "common": {
+    "loading": "Cargando...",
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "delete": "Eliminar",
+    "edit": "Editar",
+    "create": "Crear",
+    "view": "Ver",
+    "search": "Buscar",
+    "filter": "Filtrar",
+    "refresh": "Actualizar",
+    "status": {
+      "online": "En Línea",
+      "offline": "Fuera de Línea",
+      "active": "Activo",
+      "inactive": "Inactivo",
+      "error": "Error",
+      "warning": "Advertencia"
+    },
+    "error": {
+      "occurred": "Ha ocurrido un error",
+      "tryAgain": "Por favor intente de nuevo"
+    }
+  },
+  "languages": {
+    "en": "Inglés",
+    "es": "Español"
+  }
+} 

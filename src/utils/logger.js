@@ -18,12 +18,22 @@ const logger = winston.createLogger({
     winston.format.json()
   ),
   defaultMeta: { service: 'aemos-api' },
+
+  format: customFormat,
   transports: [
     // Write all logs to console
     new winston.transports.Console({
       format: winston.format.combine(
         winston.format.colorize(),
         winston.format.simple()
+
+        winston.format.printf(
+          ({ level, message, timestamp, ...meta }) => {
+            return `${timestamp} ${level}: ${message} ${
+              Object.keys(meta).length ? JSON.stringify(meta, null, 2) : ''
+            }`;
+          }
+        )
       )
     }),
     new winston.transports.DailyRotateFile({

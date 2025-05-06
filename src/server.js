@@ -1,8 +1,10 @@
 const app = require('./app');
+const http = require('http');
 const sequelize = require('./config/database');
 const { initModels } = require('./models/initModels');
 const config = require('./config');
 const logger = require('./utils/logger');
+const socketManager = require('./utils/socketManager');
 
 // Set port from environment variables or default
 const PORT = config.server.port;
@@ -29,9 +31,16 @@ const startServer = async () => {
       // logger.info('Database synchronized (tables altered if needed)');
     }
     
+    // Create HTTP server with Express app
+    const server = http.createServer(app);
+    
+    // Initialize Socket.io
+    socketManager.initialize(server);
+    
     // Start server
-    app.listen(PORT, () => {
+    server.listen(PORT, () => {
       logger.info(`Server running in ${config.server.nodeEnv} mode on port ${PORT}`);
+      logger.info(`Socket.io server running on port ${PORT}`);
     });
   } catch (error) {
     logger.error('Failed to start server:', error);

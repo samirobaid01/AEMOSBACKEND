@@ -55,6 +55,7 @@
     "rate-limiter-flexible": "^7.1.0",
     "response-time": "^2.3.3",
     "sequelize": "^6.37.1",
+    "socket.io": "^4.8.1",
     "unleash-client": "^6.6.0",
     "uuid": "^11.1.0",
     "winston": "^3.17.0",

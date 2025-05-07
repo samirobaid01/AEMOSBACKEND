@@ -6,13 +6,14 @@ const { ApiError } = require('../middlewares/errorHandler');
 const login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
-    const { user, token } = await authService.login(email, password);
+    const { user, token, refreshToken } = await authService.login(email, password);
     
     res.status(200).json({
       status: 'success',
       data: {
         user,
-        token
+        token,
+        refreshToken
       }
     });
   } catch (error) {
@@ -38,6 +39,28 @@ const logout = async (req, res, next) => {
   }
 };
 
+// Refresh access token using refresh token
+const refreshToken = async (req, res, next) => {
+  try {
+    const { refreshToken } = req.body;
+    
+    if (!refreshToken) {
+      throw new ApiError(400, 'Refresh token is required');
+    }
+    
+    const { token } = await authService.refreshToken(refreshToken);
+    
+    res.status(200).json({
+      status: 'success',
+      data: {
+        token
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // Signup a new user
 const signup = async (req, res, next) => {
   try {
@@ -53,12 +76,14 @@ const signup = async (req, res, next) => {
     
     // Generate JWT token for automatic login
     const token = authService.generateToken(user);
+    const refreshToken = authService.generateRefreshToken(user);
     
     res.status(201).json({
       status: 'success',
       data: {
         user,
         token,
+        refreshToken,
         notifications: notifyUser ? notifications : undefined
       }
     });
@@ -86,5 +111,6 @@ module.exports = {
   login,
   logout,
   signup,
-  getCurrentUser
+  getCurrentUser,
+  refreshToken
 }; 

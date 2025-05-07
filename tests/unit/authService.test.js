@@ -8,7 +8,8 @@ const tokenBlacklistService = require('../../src/services/tokenBlacklistService'
 // Mock dependencies
 jest.mock('../../src/models/initModels', () => ({
   User: {
-    findOne: jest.fn()
+    findOne: jest.fn(),
+    findByPk: jest.fn()
   }
 }));
 
@@ -64,7 +65,8 @@ describe('Auth Service', () => {
           email: 'test@example.com',
           role: 2
         },
-        token: 'mock-token'
+        token: 'mock-token',
+        refreshToken: 'mock-token'
       });
     });
     
@@ -156,6 +158,127 @@ describe('Auth Service', () => {
         { expiresIn: config.jwt.expiresIn }
       );
       expect(token).toBe('mock-token');
+    });
+  });
+
+  describe('generateRefreshToken', () => {
+    it('should generate refresh token with correct payload', () => {
+      // Arrange
+      const mockUser = {
+        id: 1,
+        email: 'test@example.com',
+        roleId: 2
+      };
+      
+      // Act
+      jwt.sign.mockReturnValueOnce('mock-refresh-token');
+      const token = authService.generateRefreshToken(mockUser);
+      
+      // Assert
+      expect(jwt.sign).toHaveBeenCalledWith(
+        {
+          id: 1,
+          tokenType: 'refresh'
+        },
+        config.jwt.secret,
+        { expiresIn: '7d' }
+      );
+      expect(token).toBe('mock-refresh-token');
+    });
+  });
+
+  describe('refreshToken', () => {
+    it('should refresh access token with valid refresh token', async () => {
+      // Arrange
+      const mockRefreshToken = 'valid-refresh-token';
+      const mockDecodedToken = { 
+        id: 1, 
+        tokenType: 'refresh'
+      };
+      const mockUser = {
+        id: 1,
+        email: 'test@example.com',
+        roleId: 2
+      };
+      
+      jwt.verify.mockReturnValue(mockDecodedToken);
+      User.findByPk.mockResolvedValue(mockUser);
+      jwt.sign.mockReturnValueOnce('new-access-token');
+      
+      // Act
+      const result = await authService.refreshToken(mockRefreshToken);
+      
+      // Assert
+      expect(jwt.verify).toHaveBeenCalledWith(mockRefreshToken, config.jwt.secret);
+      expect(User.findByPk).toHaveBeenCalledWith(1);
+      expect(result).toEqual({
+        token: 'new-access-token'
+      });
+    });
+    
+    it('should throw error when token is not a refresh token', async () => {
+      // Arrange
+      const mockToken = 'not-refresh-token';
+      const mockDecodedToken = { 
+        id: 1,
+        // Missing tokenType: 'refresh'
+      };
+      
+      jwt.verify.mockReturnValue(mockDecodedToken);
+      
+      // Act & Assert
+      await expect(authService.refreshToken(mockToken))
+        .rejects
+        .toThrow('Invalid refresh token');
+    });
+    
+    it('should throw error when user not found', async () => {
+      // Arrange
+      const mockToken = 'valid-refresh-token';
+      const mockDecodedToken = { 
+        id: 999, // Non-existent user ID
+        tokenType: 'refresh'
+      };
+      
+      jwt.verify.mockReturnValue(mockDecodedToken);
+      User.findByPk.mockResolvedValue(null);
+      
+      // Act & Assert
+      await expect(authService.refreshToken(mockToken))
+        .rejects
+        .toThrow('User not found');
+    });
+    
+    it('should throw error when token has invalid signature', async () => {
+      // Arrange
+      const mockToken = 'invalid-signature-token';
+      
+      jwt.verify.mockImplementation(() => {
+        const error = new Error('invalid signature');
+        error.name = 'JsonWebTokenError';
+        throw error;
+      });
+      
+      // Act & Assert
+      await expect(authService.refreshToken(mockToken))
+        .rejects
+        .toThrow('Invalid refresh token');
+    });
+    
+    it('should throw error when token is expired', async () => {
+      // Arrange
+      const mockToken = 'expired-token';
+      
+      jwt.verify.mockImplementation(() => {
+        const error = new Error('jwt expired');
+        error.name = 'TokenExpiredError';
+        throw error;
+      });
+      
+      // Act & Assert
+      await expect(authService.refreshToken(mockToken))
+        .rejects
+        .toThrow('Refresh token expired');
     });
   });
   

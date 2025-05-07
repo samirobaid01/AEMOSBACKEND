@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const indexRoutes = require('./routes/index');
 const authRoutes = require('./routes/authRoutes');
 const deviceRoutes = require('./routes/deviceRoutes');
 const organizationRoutes = require('./routes/organizationRoutes');
@@ -28,6 +29,22 @@ app.use((req, res, next) => {
   logger.info(`${req.method} ${req.originalUrl}`);
   next();
 });
+
+// Middleware to restrict routes to localhost only
+const localhostOnly = (req, res, next) => {
+  const ip = req.ip || req.connection.remoteAddress;
+  const isLocalhost = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1' || ip.includes('localhost');
+  
+  // Allow access only from localhost and in development environment
+  if ((isLocalhost || process.env.NODE_ENV === 'development') && process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'staging') {
+    return next();
+  }
+  
+  return res.status(403).json({
+    status: 'error',
+    message: 'This endpoint is restricted to localhost only'
+  });
+};
 
 // Apply middleware based on configuration
 if (features.security.helmet) {
@@ -98,6 +115,9 @@ app.get('/api/v1/health/ready', (req, res) => {
 app.get('/api/v1/health/live', (req, res) => {
   res.status(200).json({ status: 'alive' });
 });
+
+// Mount index routes first
+app.use('/api/v1', indexRoutes);
 
 // Mount API routes
 app.use('/api/v1/auth', authRoutes);

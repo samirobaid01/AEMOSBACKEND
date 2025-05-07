@@ -21,8 +21,9 @@ const login = async (email, password) => {
     throw new ApiError(401, 'Invalid email or password');
   }
   
-  // Generate JWT token
+  // Generate JWT token and refresh token
   const token = generateToken(user);
+  const refreshToken = generateRefreshToken(user);
   
   return {
     user: {
@@ -31,7 +32,8 @@ const login = async (email, password) => {
       email: user.email,
       role: user.roleId
     },
-    token
+    token,
+    refreshToken
   };
 };
 
@@ -69,6 +71,55 @@ const generateToken = (user) => {
   );
 };
 
+// Generate refresh token with longer expiry
+const generateRefreshToken = (user) => {
+  const payload = {
+    id: user.id,
+    tokenType: 'refresh'
+  };
+  
+  return jwt.sign(
+    payload,
+    config.jwt.secret,
+    { expiresIn: '7d' } // Refresh tokens typically have longer expiry
+  );
+};
+
+// Refresh access token using refresh token
+const refreshToken = async (token) => {
+  try {
+    // Verify the refresh token
+    const decoded = jwt.verify(token, config.jwt.secret);
+    
+    // Check if it's a refresh token
+    if (decoded.tokenType !== 'refresh') {
+      throw new ApiError(401, 'Invalid refresh token');
+    }
+    
+    // Get user from database
+    const user = await User.findByPk(decoded.id);
+    
+    if (!user) {
+      throw new ApiError(401, 'User not found');
+    }
+    
+    // Generate new access token
+    const newToken = generateToken(user);
+    
+    return {
+      token: newToken
+    };
+  } catch (error) {
+    if (error.name === 'JsonWebTokenError') {
+      throw new ApiError(401, 'Invalid refresh token');
+    } else if (error.name === 'TokenExpiredError') {
+      throw new ApiError(401, 'Refresh token expired');
+    } else {
+      throw error;
+    }
+  }
+};
+
 // Verify JWT token
 const verifyToken = (token) => {
   try {
@@ -82,5 +133,7 @@ module.exports = {
   login,
   logout,
   generateToken,
-  verifyToken
+  verifyToken,
+  refreshToken,
+  generateRefreshToken
 }; 

@@ -109,6 +109,15 @@ router.get('/routes', localhostOnly, (req, res) => {
       },
       { 
         method: 'POST', 
+        path: '/api/auth/refresh-token', 
+        description: 'Refresh access token using refresh token', 
+        auth: false,
+        params: {
+          refreshToken: "your_refresh_token_here"
+        } 
+      },
+      { 
+        method: 'POST', 
         path: '/api/auth/logout', 
         description: 'Logout and invalidate token', 
         auth: true 
@@ -427,6 +436,15 @@ router.get('/insomnia', localhostOnly, (req, res) => {
           termsAndConditions: true,
           notifyUser: true
         }
+      },
+      { 
+        method: 'POST', 
+        path: '/auth/refresh-token', 
+        description: 'Refresh access token using refresh token', 
+        auth: false,
+        params: {
+          refreshToken: "your_refresh_token_here"
+        } 
       },
       { 
         method: 'POST', 

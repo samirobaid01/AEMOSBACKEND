@@ -12,6 +12,9 @@ router.post('/login', validate(authSchema.login), authController.login);
 // Signup route - no authentication required
 router.post('/signup', validate(authSchema.signup), authController.signup);
 
+// Refresh token route - no authentication required
+router.post('/refresh-token', validate(authSchema.refreshToken), authController.refreshToken);
+
 // Logout route - authentication required
 router.post('/logout', authenticate, authController.logout);
 

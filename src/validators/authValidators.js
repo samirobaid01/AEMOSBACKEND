@@ -7,6 +7,10 @@ const authSchema = {
     password: Joi.string().required()
   }),
   
+  refreshToken: Joi.object({
+    refreshToken: Joi.string().required()
+  }),
+  
   signup: Joi.object({
     userName: Joi.string().min(3).max(256).required(),
     email: Joi.string().email().required(),

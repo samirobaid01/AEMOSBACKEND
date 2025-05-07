@@ -2,6 +2,24 @@
 
 Frontend application for the Automated Environmental Monitoring & Operations System (AEMOS).
 
+## Code Structure
+
+The application follows a clear separation of concerns:
+
+- `/src/components`: Presentation/UI components
+- `/src/containers`: Container components that handle data fetching and state management
+- `/src/hooks`: Custom React hooks
+- `/src/utils`: Utility functions
+- `/src/services`: API and other service integrations
+- `/src/state`: Redux state management
+
+## Notes on Structure Cleanup
+
+Previous codebase had duplicate container components in both `/features/*/containers` and `/containers`. 
+The application was refactored to consolidate all containers in the `/containers` directory.
+
+If you need to reference the previous implementation, check git history before [DATE].
+
 ## Development
 
 ```bash

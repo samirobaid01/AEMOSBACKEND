@@ -3,15 +3,26 @@ import Joyride, { ACTIONS, EVENTS, STATUS } from 'react-joyride';
 import type { CallBackProps, Step } from 'react-joyride';
 import { useTheme } from '@mui/material/styles';
 import { useTranslation } from 'react-i18next';
-import { useAppDispatch, useAppSelector } from '../store/hooks';
+import { useAppDispatch, useAppSelector } from '../state/hooks';
 import {
   closeWalkthrough,
   completeWalkthrough,
   goToStep,
-} from '../store/slices/walkthroughSlice';
-import walkthroughConfig from '../config/walkthrough';
+} from '../state/slices/walkthroughSlice';
+import { WALKTHROUGH_STEPS } from '../config/walkthrough';
+import { disableWalkthroughCompletely } from '../utils/walkthroughHelpers';
 
 const Walkthrough: React.FC = () => {
+  // EMERGENCY FIX: Force disable and never render walkthrough
+  // This completely prevents the walkthrough from causing redirects/reloads
+  useEffect(() => {
+    disableWalkthroughCompletely();
+  }, []);
+  
+  // Quick disable - immediately return null without rendering anything
+  return null;
+  
+  // Original code below is never executed
   const { t } = useTranslation();
   const theme = useTheme();
   const dispatch = useAppDispatch();
@@ -22,10 +33,15 @@ const Walkthrough: React.FC = () => {
 
   // Convert our config steps to Joyride steps, with translated content
   useEffect(() => {
-    const translatedSteps = walkthroughConfig.steps.map(step => ({
+    const translatedSteps = WALKTHROUGH_STEPS.map(step => ({
       ...step,
-      content: t(`walkthrough.steps.${step.id}.content`, { defaultValue: step.content }),
-      title: t(`walkthrough.steps.${step.id}.title`, { defaultValue: step.title }),
+      disableBeacon: true, // Disable beacon for all steps
+      content: step.id 
+        ? t(`walkthrough.steps.${step.id}.content`, { defaultValue: step.content })
+        : step.content,
+      title: step.id && step.title
+        ? t(`walkthrough.steps.${step.id}.title`, { defaultValue: step.title })
+        : step.title,
     }));
     setSteps(translatedSteps);
   }, [t]);

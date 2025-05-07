@@ -7,8 +7,9 @@
 
 import { useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { useAppDispatch, useAppSelector } from '../store/hooks';
-import { fetchCurrentUser } from '../store/slices/authSlice';
+import { useAppDispatch, useAppSelector } from '../state/hooks';
+import { fetchCurrentUser } from '../state/slices/authSlice';
+import type { RootState } from '../state/store';
 
 /**
  * SyncAuthState - A hook to synchronize auth state between Context and Redux
@@ -18,11 +19,24 @@ import { fetchCurrentUser } from '../store/slices/authSlice';
 export const useSyncAuthState = () => {
   const { user, isAuthenticated } = useAuth();
   const dispatch = useAppDispatch();
-  const reduxAuthState = useAppSelector(state => state.auth);
+  const reduxAuthState = useAppSelector((state: RootState) => state.auth);
+
+  // Enhanced logging for auth state
+  useEffect(() => {
+    console.log('Auth State Sync Debug:');
+    console.log('Context Auth:', { isAuthenticated, user: user ? 'exists' : 'null' });
+    console.log('Redux Auth:', { 
+      isAuthenticated: reduxAuthState.isAuthenticated, 
+      user: reduxAuthState.user ? 'exists' : 'null',
+      loading: reduxAuthState.loading,
+      error: reduxAuthState.error 
+    });
+  }, [isAuthenticated, user, reduxAuthState]);
 
   // If user is authenticated in context but not in redux, fetch the user in redux
   useEffect(() => {
     if (isAuthenticated && !reduxAuthState.isAuthenticated) {
+      console.log('Auth mismatch detected: Fetching user from API');
       dispatch(fetchCurrentUser());
     }
   }, [isAuthenticated, reduxAuthState.isAuthenticated, dispatch]);

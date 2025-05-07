@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import socketService from '../services/socketService';
-import apiClient from '../api/apiClient';
-import { useAuth } from './AuthContext';
+import apiClient from '../utils/api/apiClient';
+import { useAuth } from '../contexts/AuthContext';
 import type { Notification } from '../../../shared/types/models';
 
 interface NotificationContextType {

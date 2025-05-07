@@ -1,0 +1,65 @@
+{
+  "common": {
+    "loading": "Loading...",
+    "error": "Error",
+    "success": "Success",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "view": "View",
+    "close": "Close"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "deviceStats": {
+      "title": "Device Status",
+      "total": "Total Devices",
+      "online": "Online",
+      "offline": "Offline",
+      "warning": "Warning"
+    },
+    "sensorStats": {
+      "title": "Sensor Status",
+      "total": "Total Sensors",
+      "active": "Active",
+      "inactive": "Inactive",
+      "alerts": "Alerts"
+    },
+    "weather": {
+      "title": "Weather & Environment",
+      "currentConditions": "Current Conditions",
+      "humidity": "Humidity",
+      "conditions": "Conditions",
+      "forecast": "Forecast",
+      "lastUpdated": "Last updated"
+    }
+  },
+  "devices": {
+    "title": "Devices",
+    "list": {
+      "title": "Device List",
+      "search": "Search devices...",
+      "noDevices": "No devices found",
+      "addDevice": "Add Device"
+    }
+  },
+  "sensors": {
+    "title": "Sensors",
+    "list": {
+      "title": "Sensor List",
+      "search": "Search sensors...",
+      "noSensors": "No sensors found",
+      "addSensor": "Add Sensor"
+    }
+  },
+  "alerts": {
+    "title": "Alerts",
+    "list": {
+      "title": "Alert List",
+      "search": "Search alerts...",
+      "noAlerts": "No alerts found",
+      "markAllRead": "Mark all as read"
+    }
+  }
+} 

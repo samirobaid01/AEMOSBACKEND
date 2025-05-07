@@ -1,0 +1,65 @@
+{
+  "common": {
+    "loading": "Cargando...",
+    "error": "Error",
+    "success": "Éxito",
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "delete": "Eliminar",
+    "edit": "Editar",
+    "view": "Ver",
+    "close": "Cerrar"
+  },
+  "dashboard": {
+    "title": "Panel de Control",
+    "deviceStats": {
+      "title": "Estado de Dispositivos",
+      "total": "Total de Dispositivos",
+      "online": "En línea",
+      "offline": "Fuera de línea",
+      "warning": "Advertencia"
+    },
+    "sensorStats": {
+      "title": "Estado de Sensores",
+      "total": "Total de Sensores",
+      "active": "Activos",
+      "inactive": "Inactivos",
+      "alerts": "Alertas"
+    },
+    "weather": {
+      "title": "Clima y Ambiente",
+      "currentConditions": "Condiciones Actuales",
+      "humidity": "Humedad",
+      "conditions": "Condiciones",
+      "forecast": "Pronóstico",
+      "lastUpdated": "Última actualización"
+    }
+  },
+  "devices": {
+    "title": "Dispositivos",
+    "list": {
+      "title": "Lista de Dispositivos",
+      "search": "Buscar dispositivos...",
+      "noDevices": "No se encontraron dispositivos",
+      "addDevice": "Agregar Dispositivo"
+    }
+  },
+  "sensors": {
+    "title": "Sensores",
+    "list": {
+      "title": "Lista de Sensores",
+      "search": "Buscar sensores...",
+      "noSensors": "No se encontraron sensores",
+      "addSensor": "Agregar Sensor"
+    }
+  },
+  "alerts": {
+    "title": "Alertas",
+    "list": {
+      "title": "Lista de Alertas",
+      "search": "Buscar alertas...",
+      "noAlerts": "No hay alertas",
+      "markAllRead": "Marcar todas como leídas"
+    }
+  }
+} 

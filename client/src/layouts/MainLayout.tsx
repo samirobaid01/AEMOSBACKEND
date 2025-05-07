@@ -1,130 +1,81 @@
-import React, { useState } from 'react';
-import { Outlet, useNavigate } from 'react-router-dom';
-import { useTranslation } from 'react-i18next';
+import React, { useState, useEffect } from 'react';
+import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
-  AppBar,
   Box,
-  CssBaseline,
-  Divider,
-  Drawer,
+  AppBar,
+  Toolbar,
+  Typography,
   IconButton,
+  Drawer,
   List,
   ListItem,
   ListItemButton,
   ListItemIcon,
   ListItemText,
-  Toolbar,
-  Typography,
-  Badge,
-  Menu,
-  MenuItem,
-  Avatar,
+  useTheme,
+  useMediaQuery,
 } from '@mui/material';
 import {
   Menu as MenuIcon,
   Dashboard as DashboardIcon,
-  Devices as DevicesIcon,
+  DevicesOther as DevicesIcon,
   Sensors as SensorsIcon,
-  Person as PersonIcon,
-  ExitToApp as LogoutIcon,
   Notifications as NotificationsIcon,
-  Business as OrganizationIcon,
   Settings as SettingsIcon,
 } from '@mui/icons-material';
-import { useAuth } from '../contexts/AuthContext';
-import { useNotifications } from '../contexts/NotificationContext';
-import LanguageSelector from '../components/LanguageSelector';
-import { useAppSelector } from '../store/hooks';
-import analyticsService from '../services/analytics';
 
 const drawerWidth = 240;
 
 const MainLayout: React.FC = () => {
-  const { t } = useTranslation();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
-  const [notificationAnchorEl, setNotificationAnchorEl] = useState<null | HTMLElement>(null);
-  
-  const { user, logout } = useAuth();
-  const { notifications, unreadCount, markAsRead } = useNotifications();
-  const { enabled: analyticsEnabled } = useAppSelector(state => state.analytics);
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Add diagnostic logging
+  useEffect(() => {
+    console.log('MainLayout Debug:');
+    console.log('Current path:', location.pathname);
+    console.log('Location state:', location.state);
+  }, [location]);
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
   };
 
-  const handleProfileMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
-    setAnchorEl(event.currentTarget);
-  };
-
-  const handleProfileMenuClose = () => {
-    setAnchorEl(null);
-  };
-
-  const handleNotificationMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
-    setNotificationAnchorEl(event.currentTarget);
-  };
-
-  const handleNotificationMenuClose = () => {
-    setNotificationAnchorEl(null);
-  };
-
-  const handleLogout = () => {
-    // Track logout event before actually logging out
-    if (analyticsEnabled && user) {
-      analyticsService.trackEvent('logout', {
-        userId: user.id,
-        userName: user.userName
-      });
-      
-      // Reset user identity in analytics after tracking the logout
-      analyticsService.reset();
-    }
+  const handleNavigation = (path: string) => {
+    console.log(`Navigation requested to: ${path}`);
+    console.log(`Current path: ${location.pathname}`);
     
-    // Logout from auth context
-    logout();
-    navigate('/login');
-  };
-
-  const handleNavigate = (path: string) => {
     navigate(path);
-    setMobileOpen(false);
+    
+    if (isMobile) {
+      handleDrawerToggle();
+    }
   };
 
-  const handleNotificationClick = (id: string) => {
-    markAsRead(id);
-    setNotificationAnchorEl(null);
-    // Navigate to relevant page based on notification type
-    navigate('/notifications');
-  };
-
-  // Navigation items
-  const navItems = [
-    { text: t('dashboard.title'), icon: <DashboardIcon />, path: '/' },
-    { text: t('devices.title'), icon: <DevicesIcon />, path: '/devices' },
-    { text: t('sensors.title'), icon: <SensorsIcon />, path: '/sensors' },
-    { text: t('organizations.title', 'Organizations'), icon: <OrganizationIcon />, path: '/organizations' },
-    { text: t('notifications.title'), icon: <NotificationsIcon />, path: '/notifications' },
-    { text: t('settings.title'), icon: <SettingsIcon />, path: '/settings', 'data-tour': 'settings' },
+  const menuItems = [
+    { text: 'Dashboard', icon: <DashboardIcon />, path: '/' },
+    { text: 'Devices', icon: <DevicesIcon />, path: '/devices' },
+    { text: 'Sensors', icon: <SensorsIcon />, path: '/sensors' },
+    { text: 'Notifications', icon: <NotificationsIcon />, path: '/notifications' },
+    { text: 'Settings', icon: <SettingsIcon />, path: '/settings' },
   ];
 
   const drawer = (
     <div>
-      <Toolbar>
-        <Typography variant="h6" noWrap component="div">
-          {t('app.name')}
-        </Typography>
-      </Toolbar>
-      <Divider />
+      <Toolbar />
       <List>
-        {navItems.map((item) => (
-          <ListItem key={item.text} disablePadding>
-            <ListItemButton onClick={() => handleNavigate(item.path)}>
-              <ListItemIcon>{item.icon}</ListItemIcon>
-              <ListItemText primary={item.text} />
-            </ListItemButton>
-          </ListItem>
+        {menuItems.map((item) => (
+          <ListItemButton
+            key={item.text}
+            onClick={() => handleNavigation(item.path)}
+            selected={location.pathname === item.path}
+          >
+            <ListItemIcon>{item.icon}</ListItemIcon>
+            <ListItemText primary={item.text} />
+          </ListItemButton>
         ))}
       </List>
     </div>
@@ -132,7 +83,6 @@ const MainLayout: React.FC = () => {
 
   return (
     <Box sx={{ display: 'flex' }}>
-      <CssBaseline />
       <AppBar
         position="fixed"
         sx={{
@@ -150,134 +100,11 @@ const MainLayout: React.FC = () => {
           >
             <MenuIcon />
           </IconButton>
-          <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
-            {t('app.fullName')}
+          <Typography variant="h6" noWrap component="div">
+            AEMOS Dashboard
           </Typography>
-
-          {/* Language Selector */}
-          <Box sx={{ mr: 2 }} data-tour="language">
-            <LanguageSelector 
-              variant="standard" 
-              size="small" 
-              sx={{ 
-                minWidth: 100, 
-                color: 'white'
-              }}
-            />
-          </Box>
-
-          {/* Notifications */}
-          <IconButton
-            color="inherit"
-            onClick={handleNotificationMenuOpen}
-          >
-            <Badge badgeContent={unreadCount} color="error">
-              <NotificationsIcon />
-            </Badge>
-          </IconButton>
-
-          {/* User avatar */}
-          <IconButton
-            edge="end"
-            aria-label="account of current user"
-            aria-haspopup="true"
-            onClick={handleProfileMenuOpen}
-            color="inherit"
-          >
-            <Avatar sx={{ width: 32, height: 32 }}>
-              {user?.firstName?.[0] || user?.userName?.[0]}
-            </Avatar>
-          </IconButton>
         </Toolbar>
       </AppBar>
-
-      {/* Profile menu */}
-      <Menu
-        anchorEl={anchorEl}
-        open={Boolean(anchorEl)}
-        onClose={handleProfileMenuClose}
-      >
-        <MenuItem onClick={() => {
-          handleProfileMenuClose();
-          navigate('/profile');
-        }}>
-          <ListItemIcon>
-            <PersonIcon fontSize="small" />
-          </ListItemIcon>
-          <Typography variant="inherit">Profile</Typography>
-        </MenuItem>
-        <MenuItem onClick={handleLogout}>
-          <ListItemIcon>
-            <LogoutIcon fontSize="small" />
-          </ListItemIcon>
-          <Typography variant="inherit">Logout</Typography>
-        </MenuItem>
-      </Menu>
-
-      {/* Notifications menu */}
-      <Menu
-        anchorEl={notificationAnchorEl}
-        open={Boolean(notificationAnchorEl)}
-        onClose={handleNotificationMenuClose}
-        PaperProps={{
-          sx: {
-            maxHeight: 400,
-            width: 320,
-          },
-        }}
-      >
-        <MenuItem sx={{ justifyContent: 'center' }}>
-          <Typography variant="subtitle1">Notifications</Typography>
-        </MenuItem>
-        <Divider />
-        {notifications.length === 0 ? (
-          <MenuItem>
-            <Typography variant="body2">No notifications</Typography>
-          </MenuItem>
-        ) : (
-          notifications.slice(0, 5).map((notification) => (
-            <MenuItem
-              key={notification.id}
-              onClick={() => handleNotificationClick(notification.id)}
-              sx={{
-                borderLeft: 4,
-                borderColor: 
-                  notification.type === 'error' ? 'error.main' :
-                  notification.type === 'warning' ? 'warning.main' :
-                  notification.type === 'success' ? 'success.main' : 
-                  'primary.main',
-                bgcolor: notification.read ? 'inherit' : 'action.hover',
-                py: 1,
-              }}
-            >
-              <Box sx={{ width: '100%' }}>
-                <Typography variant="subtitle2">{notification.title}</Typography>
-                <Typography variant="body2" color="text.secondary" noWrap>
-                  {notification.message}
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  {new Date(notification.createdAt).toLocaleString()}
-                </Typography>
-              </Box>
-            </MenuItem>
-          ))
-        )}
-        {notifications.length > 5 && (
-          <MenuItem
-            onClick={() => {
-              handleNotificationMenuClose();
-              navigate('/notifications');
-            }}
-            sx={{ justifyContent: 'center' }}
-          >
-            <Typography variant="button" color="primary">
-              View All
-            </Typography>
-          </MenuItem>
-        )}
-      </Menu>
-
-      {/* Navigation drawer */}
       <Box
         component="nav"
         sx={{ width: { sm: drawerWidth }, flexShrink: { sm: 0 } }}
@@ -307,15 +134,13 @@ const MainLayout: React.FC = () => {
           {drawer}
         </Drawer>
       </Box>
-
-      {/* Main content */}
       <Box
         component="main"
         sx={{
           flexGrow: 1,
           p: 3,
           width: { sm: `calc(100% - ${drawerWidth}px)` },
-          mt: 8,
+          mt: '64px', // Height of AppBar
         }}
       >
         <Outlet />

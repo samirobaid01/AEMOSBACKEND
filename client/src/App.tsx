@@ -1,21 +1,23 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { ThemeProvider, createTheme } from '@mui/material/styles';
+import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import { AuthProvider } from './contexts/AuthContext';
 import { NotificationProvider } from './contexts/NotificationContext';
-import { useAppSelector } from './store/hooks';
+import { useAppSelector } from './state/hooks';
 import { useSyncAuthState, logMigrationStatus } from './utils/migrationHelpers';
-import Login from './features/auth/Login';
-import Register from './features/auth/Register';
-import Dashboard from './features/dashboard/Dashboard';
-import DeviceList from './features/devices/DeviceList';
-import DeviceDetail from './features/devices/DeviceDetail';
-import SensorList from './features/sensors/SensorList';
-import SensorDetail from './features/sensors/SensorDetail';
-import NotificationCenter from './features/notifications/NotificationCenter';
-import Settings from './features/settings/Settings';
+import Login from './pages/Login';
+import Register from './pages/Register';
+import Dashboard from './containers/dashboard/DashboardContainer';
+import { DeviceListContainer as DeviceList } from './containers/devices/DeviceListContainer';
+import { DeviceDetailContainer as DeviceDetail } from './containers/devices/DeviceDetailContainer';
+import { SensorListContainer as SensorList } from './containers/sensors/SensorListContainer';
+import { SensorDetailContainer as SensorDetail } from './containers/sensors/SensorDetailContainer';
+import NotificationCenterContainer from './containers/notifications/NotificationCenterContainer';
+import { SettingsContainer as Settings } from './containers/settings/SettingsContainer';
 import MainLayout from './layouts/MainLayout';
+import theme from './theme';
 
 // Create React Query client
 const queryClient = new QueryClient({
@@ -28,34 +30,27 @@ const queryClient = new QueryClient({
   },
 });
 
-// Create theme
-const theme = createTheme({
-  palette: {
-    mode: 'light',
-    primary: {
-      main: '#2e7d32', // Green for environmental theme
-    },
-    secondary: {
-      main: '#0288d1', // Blue for water-related theme
-    },
-    background: {
-      default: '#f5f5f5',
-    },
-  },
-});
-
 // Protected route component using Redux
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { isAuthenticated, loading } = useAppSelector(state => state.auth);
+  const location = useLocation();
+
+  // Add diagnostic logging
+  console.log('ProtectedRoute Debug:');
+  console.log('Current path:', location.pathname);
+  console.log('Auth state:', { isAuthenticated, loading });
 
   if (loading) {
+    console.log('Auth loading, showing loading indicator');
     return <div>Loading...</div>;
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
+    console.log('Not authenticated, redirecting to /login');
+    return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
+  console.log('Authenticated, rendering protected content');
   return <>{children}</>;
 };
 
@@ -90,7 +85,7 @@ const AppRoot = () => {
           <Route path="devices/:deviceId" element={<DeviceDetail />} />
           <Route path="sensors" element={<SensorList />} />
           <Route path="sensors/:sensorId" element={<SensorDetail />} />
-          <Route path="notifications" element={<NotificationCenter />} />
+          <Route path="notifications" element={<NotificationCenterContainer />} />
           <Route path="settings" element={<Settings />} />
         </Route>
         

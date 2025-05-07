@@ -1,15 +1,15 @@
-import apiClient from '../api/apiClient';
-import walkthroughConfig from '../config/walkthrough';
+import apiClient from '../utils/api/apiClient';
+import { WALKTHROUGH_CONFIG } from '../config/walkthrough';
 
 // Get walkthrough status from the API
 const getWalkthroughStatus = async (): Promise<{ enabled: boolean }> => {
   try {
-    const response = await apiClient.get(walkthroughConfig.apiEndpoint);
+    const response = await apiClient.get('/api/walkthrough/status');
     return response.data;
   } catch (error) {
     console.error('Failed to fetch walkthrough status:', error);
     // Default to configuration value if API fails
-    return { enabled: walkthroughConfig.enabled };
+    return { enabled: WALKTHROUGH_CONFIG.enabled };
   }
 };
 

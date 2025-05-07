@@ -1,5 +1,5 @@
 import { io, Socket } from 'socket.io-client';
-import { getAccessToken } from '../api/apiClient';
+import { getAccessToken } from '../utils/api/apiClient';
 
 type EventHandler = (data: any) => void;
 type EventMap = Record<string, EventHandler[]>;

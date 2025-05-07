@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Auth System Test</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      line-height: 1.6;
+    }
+    h1 {
+      color: #333;
+      border-bottom: 1px solid #eee;
+      padding-bottom: 10px;
+    }
+    .card {
+      background-color: #f9f9f9;
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    code {
+      font-family: monospace;
+      background-color: #f1f1f1;
+      padding: 2px 4px;
+      border-radius: 3px;
+    }
+    .btn {
+      background-color: #4CAF50;
+      border: none;
+      color: white;
+      padding: 10px 20px;
+      text-align: center;
+      text-decoration: none;
+      display: inline-block;
+      font-size: 16px;
+      margin: 10px 0;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+    .btn-warning {
+      background-color: #ff9800;
+    }
+    pre {
+      background-color: #333;
+      color: #fff;
+      padding: 15px;
+      border-radius: 5px;
+      overflow: auto;
+    }
+    #console {
+      min-height: 300px;
+      max-height: 500px;
+      overflow-y: auto;
+    }
+  </style>
+</head>
+<body>
+  <h1>Authentication System Test</h1>
+  
+  <div class="card">
+    <h2>Current Status</h2>
+    <p>Token in localStorage: <span id="token-status">Checking...</span></p>
+    <p>Current path: <span id="current-path">Checking...</span></p>
+    <p>Protected page: <span id="protected-status">Checking...</span></p>
+  </div>
+  
+  <div class="card">
+    <h2>Actions</h2>
+    <button id="run-test" class="btn">Run Test</button>
+    <button id="create-token" class="btn">Create Emergency Token</button>
+    <button id="clear-token" class="btn btn-warning">Clear Token</button>
+  </div>
+  
+  <div class="card">
+    <h2>Console Output</h2>
+    <pre id="console"></pre>
+  </div>
+
+  <script>
+    // Override console to capture output
+    const consoleEl = document.getElementById('console');
+    const originalLog = console.log;
+    const originalWarn = console.warn;
+    const originalError = console.error;
+    
+    console.log = function(...args) {
+      originalLog.apply(console, args);
+      const line = document.createElement('div');
+      line.textContent = args.join(' ');
+      consoleEl.appendChild(line);
+      consoleEl.scrollTop = consoleEl.scrollHeight;
+    };
+    
+    console.warn = function(...args) {
+      originalWarn.apply(console, args);
+      const line = document.createElement('div');
+      line.textContent = '⚠️ ' + args.join(' ');
+      line.style.color = '#ff9800';
+      consoleEl.appendChild(line);
+      consoleEl.scrollTop = consoleEl.scrollHeight;
+    };
+    
+    console.error = function(...args) {
+      originalError.apply(console, args);
+      const line = document.createElement('div');
+      line.textContent = '❌ ' + args.join(' ');
+      line.style.color = '#f44336';
+      consoleEl.appendChild(line);
+      consoleEl.scrollTop = consoleEl.scrollHeight;
+    };
+
+    // Helper functions
+    const TOKEN_KEY = 'aemos_access_token';
+    
+    function updateStatus() {
+      const token = localStorage.getItem(TOKEN_KEY);
+      document.getElementById('token-status').textContent = token ? 'Present' : 'None';
+      
+      const path = window.location.pathname;
+      document.getElementById('current-path').textContent = path;
+      
+      const isProtected = path.includes('/sensors') || path.includes('/devices') || path === '/';
+      document.getElementById('protected-status').textContent = isProtected ? 'Yes' : 'No';
+    }
+    
+    function createEmergencyToken() {
+      console.log('Creating emergency token...');
+      const token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwidXNlcklkIjoiMTIzIiwidXNlcm5hbWUiOiJ0ZXN0dXNlciIsIm5hbWUiOiJUZW1wb3JhcnkgVXNlciIsImV4cCI6NDA5MTgyMTIwMH0.signature';
+      localStorage.setItem(TOKEN_KEY, token);
+      console.log('Emergency token created and saved');
+      updateStatus();
+      return token;
+    }
+    
+    function clearToken() {
+      console.log('Clearing token...');
+      localStorage.removeItem(TOKEN_KEY);
+      console.log('Token cleared');
+      updateStatus();
+    }
+    
+    function runTest() {
+      console.log('======== Auth Test Script ========');
+      console.log('Testing auth token management...');
+      
+      // Check current token
+      const currentToken = localStorage.getItem(TOKEN_KEY);
+      console.log('Current token:', currentToken ? 'Present' : 'None');
+      
+      // Test token retrieval
+      try {
+        const token = localStorage.getItem(TOKEN_KEY);
+        console.log('Token retrieval test:', token ? 'SUCCESS' : 'FAILED');
+      } catch (e) {
+        console.error('Token retrieval failed:', e);
+      }
+      
+      // Check if we're on a protected page
+      const path = window.location.pathname;
+      const isProtectedPage = path.includes('/sensors') || path.includes('/devices') || path === '/';
+      console.log('Current page is', isProtectedPage ? 'protected' : 'not protected');
+      
+      // Final status
+      console.log('Auth system status:');
+      console.log('- Token exists:', !!currentToken);
+      console.log('- On protected page:', isProtectedPage);
+      
+      console.log('======== Test Complete ========');
+    }
+    
+    // Add event listeners
+    document.getElementById('run-test').addEventListener('click', runTest);
+    document.getElementById('create-token').addEventListener('click', createEmergencyToken);
+    document.getElementById('clear-token').addEventListener('click', clearToken);
+    
+    // Initialize
+    updateStatus();
+    console.log('Auth test page loaded. Ready to run tests.');
+  </script>
+</body>
+</html> 

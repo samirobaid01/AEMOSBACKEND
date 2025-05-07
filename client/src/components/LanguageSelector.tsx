@@ -7,9 +7,9 @@ import {
 } from '@mui/material';
 import type { SelectChangeEvent } from '@mui/material';
 import { useTranslation } from 'react-i18next';
-import { useAppDispatch, useAppSelector } from '../store/hooks';
-import { setLanguage, type LanguageCode } from '../store/slices/languageSlice';
-import { SUPPORTED_LANGUAGES } from '../i18n';
+import { useAppDispatch, useAppSelector } from '../state/hooks';
+import { setLanguage, type LanguageCode } from '../state/slices/languageSlice';
+import { SUPPORTED_LANGUAGES } from '../i18n/i18n';
 
 interface LanguageSelectorProps {
   variant?: 'standard' | 'outlined' | 'filled';

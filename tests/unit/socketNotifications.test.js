@@ -9,10 +9,34 @@ jest.mock('../../src/utils/socketManager', () => ({
   getIo: jest.fn()
 }));
 
+// Mock config module with broadcastAll flag
+jest.mock('../../src/config', () => {
+  // Create a mock config object that we can change during tests
+  const mockConfig = {
+    broadcastAll: true,
+    features: {
+      notifications: {
+        broadcastAll: true,
+        bufferSize: 1000,
+        broadcastInterval: 1000
+      }
+    }
+  };
+  
+  return mockConfig;
+});
+
+// Get access to the mocked config
+const mockConfig = require('../../src/config');
+
 describe('Socket Notification Service', () => {
   beforeEach(() => {
     // Clear all mocks before each test
     jest.clearAllMocks();
+    
+    // Reset broadcastAll to true for most tests
+    mockConfig.broadcastAll = true;
+    mockConfig.features.notifications.broadcastAll = true;
   });
 
   it('should send socket notification to a single user', () => {
@@ -48,7 +72,7 @@ describe('Socket Notification Service', () => {
     expect(socketManager.broadcastToRoom).toHaveBeenCalledWith('789', event, data);
   });
 
-  it('should broadcast to all when no targets provided', () => {
+  it('should broadcast to all when no targets provided and broadcastAll is enabled', () => {
     // Arrange
     const event = 'test-event';
     const data = { message: 'Test message' };
@@ -59,6 +83,23 @@ describe('Socket Notification Service', () => {
     // Assert
     expect(result).toBe(true);
     expect(socketManager.broadcastToAll).toHaveBeenCalledWith(event, data);
+    expect(socketManager.broadcastToRoom).not.toHaveBeenCalled();
+  });
+  
+  it('should NOT broadcast to all when no targets provided and broadcastAll is disabled', () => {
+    // Arrange
+    const event = 'test-event';
+    const data = { message: 'Test message' };
+    
+    // Disable broadcastAll for this test
+    mockConfig.broadcastAll = false;
+
+    // Act
+    const result = notificationService.sendSocketNotification(null, event, data);
+
+    // Assert
+    expect(result).toBe(true);
+    expect(socketManager.broadcastToAll).not.toHaveBeenCalled();
     expect(socketManager.broadcastToRoom).not.toHaveBeenCalled();
   });
   
@@ -107,7 +148,7 @@ describe('Socket Notification Service', () => {
     expect(socketManager.broadcastToRoom).toHaveBeenCalledWith('456', event, data);
   });
   
-  it('should broadcast to all when array of targets is empty after filtering', () => {
+  it('should broadcast to all when array of targets is empty after filtering and broadcastAll is enabled', () => {
     // Arrange
     const targets = [null, undefined, ''];
     const event = 'test-event';
@@ -115,6 +156,43 @@ describe('Socket Notification Service', () => {
 
     // Act
     const result = notificationService.sendSocketNotification(targets, event, data);
+
+    // Assert
+    expect(result).toBe(true);
+    expect(socketManager.broadcastToRoom).not.toHaveBeenCalled();
+    expect(socketManager.broadcastToAll).toHaveBeenCalledWith(event, data);
+  });
+  
+  it('should NOT broadcast to all when array of targets is empty and broadcastAll is disabled', () => {
+    // Arrange
+    const targets = [null, undefined, ''];
+    const event = 'test-event';
+    const data = { message: 'Test message' };
+    
+    // Disable broadcastAll for this test
+    mockConfig.broadcastAll = false;
+
+    // Act
+    const result = notificationService.sendSocketNotification(targets, event, data);
+
+    // Assert
+    expect(result).toBe(true);
+    expect(socketManager.broadcastToRoom).not.toHaveBeenCalled();
+    expect(socketManager.broadcastToAll).not.toHaveBeenCalled();
+  });
+  
+  it('should respect forceBroadcast parameter even when broadcastAll is disabled', () => {
+    // Arrange
+    const targets = [null, undefined, ''];
+    const event = 'test-event';
+    const data = { message: 'Test message' };
+    const forceBroadcast = true;
+    
+    // Disable broadcastAll for this test
+    mockConfig.broadcastAll = false;
+
+    // Act
+    const result = notificationService.sendSocketNotification(targets, event, data, forceBroadcast);
 
     // Assert
     expect(result).toBe(true);

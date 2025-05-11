@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 const indexRoutes = require('./routes/index');
 const authRoutes = require('./routes/authRoutes');
 const deviceRoutes = require('./routes/deviceRoutes');
@@ -45,6 +46,14 @@ const localhostOnly = (req, res, next) => {
     message: 'This endpoint is restricted to localhost only'
   });
 };
+
+// Middleware specifically for socketClient.html
+app.get('/socketClient.html', localhostOnly, (req, res, next) => {
+  next();
+});
+
+// Serve static files from the 'public' directory (after the localhostOnly middleware for socketClient.html)
+app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // Apply middleware based on configuration
 if (features.security.helmet) {

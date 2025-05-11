@@ -11,8 +11,8 @@ const getAllSensors = async (req, res, next) => {
       status: 'success',
       results: sensors.length,
       data: {
-        sensors
-      }
+        sensors,
+      },
     });
   } catch (error) {
     next(error);
@@ -24,16 +24,16 @@ const getSensorById = async (req, res, next) => {
   try {
     const { id } = req.params;
     const sensor = await sensorService.getSensorById(id);
-    
+
     if (!sensor) {
       return next(new ApiError(404, `Sensor with ID ${id} not found`));
     }
-    
+
     res.status(200).json({
       status: 'success',
       data: {
-        sensor
-      }
+        sensor,
+      },
     });
   } catch (error) {
     next(error);
@@ -44,12 +44,12 @@ const getSensorById = async (req, res, next) => {
 const createSensor = async (req, res, next) => {
   try {
     const sensor = await sensorService.createSensor(req.body);
-    
+
     res.status(201).json({
       status: 'success',
       data: {
-        sensor
-      }
+        sensor,
+      },
     });
   } catch (error) {
     next(error);
@@ -61,16 +61,16 @@ const updateSensor = async (req, res, next) => {
   try {
     const { id } = req.params;
     const sensor = await sensorService.updateSensor(id, req.body);
-    
+
     if (!sensor) {
       return next(new ApiError(404, `Sensor with ID ${id} not found`));
     }
-    
+
     res.status(200).json({
       status: 'success',
       data: {
-        sensor
-      }
+        sensor,
+      },
     });
   } catch (error) {
     next(error);
@@ -82,14 +82,14 @@ const deleteSensor = async (req, res, next) => {
   try {
     const { id } = req.params;
     const result = await sensorService.deleteSensor(id);
-    
+
     if (!result) {
       return next(new ApiError(404, `Sensor with ID ${id} not found`));
     }
-    
+
     res.status(204).json({
       status: 'success',
-      data: null
+      data: null,
     });
   } catch (error) {
     next(error);
@@ -106,8 +106,8 @@ const getAllTelemetryData = async (req, res, next) => {
       status: 'success',
       results: telemetryData.length,
       data: {
-        telemetryData
-      }
+        telemetryData,
+      },
     });
   } catch (error) {
     next(error);
@@ -119,13 +119,13 @@ const getTelemetryDataBySensorId = async (req, res, next) => {
   try {
     const { sensorId } = req.params;
     const telemetryData = await sensorService.getTelemetryDataBySensorId(sensorId);
-    
+
     res.status(200).json({
       status: 'success',
       results: telemetryData.length,
       data: {
-        telemetryData
-      }
+        telemetryData,
+      },
     });
   } catch (error) {
     next(error);
@@ -137,16 +137,16 @@ const getTelemetryDataById = async (req, res, next) => {
   try {
     const { id } = req.params;
     const telemetryData = await sensorService.getTelemetryDataById(id);
-    
+
     if (!telemetryData) {
       return next(new ApiError(404, `Telemetry data with ID ${id} not found`));
     }
-    
+
     res.status(200).json({
       status: 'success',
       data: {
-        telemetryData
-      }
+        telemetryData,
+      },
     });
   } catch (error) {
     next(error);
@@ -156,13 +156,15 @@ const getTelemetryDataById = async (req, res, next) => {
 // Create a new telemetry data item
 const createTelemetryData = async (req, res, next) => {
   try {
+    console.log('inside createTelemetryData');
+    console.log(req.body);
     const telemetryData = await sensorService.createTelemetryData(req.body);
-    
+
     res.status(201).json({
       status: 'success',
       data: {
-        telemetryData
-      }
+        telemetryData,
+      },
     });
   } catch (error) {
     next(error);
@@ -174,16 +176,16 @@ const updateTelemetryData = async (req, res, next) => {
   try {
     const { id } = req.params;
     const telemetryData = await sensorService.updateTelemetryData(id, req.body);
-    
+
     if (!telemetryData) {
       return next(new ApiError(404, `Telemetry data with ID ${id} not found`));
     }
-    
+
     res.status(200).json({
       status: 'success',
       data: {
-        telemetryData
-      }
+        telemetryData,
+      },
     });
   } catch (error) {
     next(error);
@@ -195,14 +197,14 @@ const deleteTelemetryData = async (req, res, next) => {
   try {
     const { id } = req.params;
     const result = await sensorService.deleteTelemetryData(id);
-    
+
     if (!result) {
       return next(new ApiError(404, `Telemetry data with ID ${id} not found`));
     }
-    
+
     res.status(204).json({
       status: 'success',
-      data: null
+      data: null,
     });
   } catch (error) {
     next(error);
@@ -216,12 +218,12 @@ module.exports = {
   createSensor,
   updateSensor,
   deleteSensor,
-  
+
   // Telemetry data endpoints
   getAllTelemetryData,
   getTelemetryDataBySensorId,
   getTelemetryDataById,
   createTelemetryData,
   updateTelemetryData,
-  deleteTelemetryData
-}; 
+  deleteTelemetryData,
+};

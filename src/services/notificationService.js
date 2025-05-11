@@ -59,9 +59,10 @@ const sendSMSNotification = async (user, message) => {
  * @param {String|Array} targets - User ID, organization ID, area ID, or array of these
  * @param {String} event - Event name
  * @param {Object} data - Notification data
+ * @param {Boolean} forceBroadcast - Override config to force broadcast to all
  * @returns {Boolean} - Success status
  */
-const sendSocketNotification = (targets, event, data) => {
+const sendSocketNotification = (targets, event, data, forceBroadcast = false) => {
   try {
     // Validate event name
     if (!event || typeof event !== 'string') {
@@ -72,10 +73,20 @@ const sendSocketNotification = (targets, event, data) => {
     // Ensure data is an object
     const safeData = data && typeof data === 'object' ? data : { message: data };
 
-    // If targets is null, undefined, or empty array, broadcast to all
+    // Check if global broadcasting is enabled or forceBroadcast is true
+    const shouldBroadcastAll = forceBroadcast || config.broadcastAll;
+
+    // If targets is null, undefined, or empty array, broadcast to all if allowed
     if (!targets || (Array.isArray(targets) && targets.length === 0)) {
-      logger.warn('No specific targets for socket notification, broadcasting to all');
-      socketManager.broadcastToAll(event, safeData);
+      logger.warn('No specific targets for socket notification');
+      
+      if (shouldBroadcastAll) {
+        logger.info('Broadcasting to all clients (broadcastAll enabled)');
+        socketManager.broadcastToAll(event, safeData);
+      } else {
+        logger.info('Skipping global broadcast (broadcastAll disabled)');
+      }
+      
       return true;
     }
     
@@ -85,8 +96,15 @@ const sendSocketNotification = (targets, event, data) => {
       const validTargets = targets.filter(target => target);
       
       if (validTargets.length === 0) {
-        logger.warn('No valid targets in array, broadcasting to all');
-        socketManager.broadcastToAll(event, safeData);
+        logger.warn('No valid targets in array');
+        
+        if (shouldBroadcastAll) {
+          logger.info('Broadcasting to all clients (broadcastAll enabled)');
+          socketManager.broadcastToAll(event, safeData);
+        } else {
+          logger.info('Skipping global broadcast (broadcastAll disabled)');
+        }
+        
         return true;
       }
       
@@ -104,9 +122,16 @@ const sendSocketNotification = (targets, event, data) => {
       return true;
     }
     
-    // If targets is something else, log a warning and broadcast to all
-    logger.warn(`Unexpected targets type: ${typeof targets}, broadcasting to all`);
-    socketManager.broadcastToAll(event, safeData);
+    // If targets is something else, log a warning and broadcast to all if allowed
+    logger.warn(`Unexpected targets type: ${typeof targets}`);
+    
+    if (shouldBroadcastAll) {
+      logger.info('Broadcasting to all clients (broadcastAll enabled)');
+      socketManager.broadcastToAll(event, safeData);
+    } else {
+      logger.info('Skipping global broadcast (broadcastAll disabled)');
+    }
+    
     return true;
   } catch (error) {
     logger.error(`Failed to send socket notification: ${error.message}`, { error });

@@ -1,4 +1,5 @@
 require('dotenv').config();
+const features = require('./features');
 
 module.exports = {
   server: {
@@ -18,5 +19,9 @@ module.exports = {
   },
   logging: {
     level: process.env.LOG_LEVEL || 'info'
-  }
+  },
+  // Add feature configurations
+  features,
+  // For quick access to common flags
+  broadcastAll: features.notifications.broadcastAll
 }; 

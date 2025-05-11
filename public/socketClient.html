@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AEMOS DataStream Socket Client (localhost only)</title>
+  <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      line-height: 1.5;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    h1 {
+      color: #333;
+    }
+    .security-warning {
+      background-color: #fff3cd;
+      border-left: 4px solid #856404;
+      color: #856404;
+      padding: 10px;
+      margin-bottom: 20px;
+      border-radius: 4px;
+      font-weight: bold;
+    }
+    #status {
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 4px;
+    }
+    .connected {
+      background-color: #d4edda;
+      color: #155724;
+    }
+    .disconnected {
+      background-color: #f8d7da;
+      color: #721c24;
+    }
+    .event-log {
+      margin-top: 20px;
+      border: 1px solid #ddd;
+      padding: 10px;
+      height: 400px;
+      overflow-y: auto;
+      background-color: #f9f9f9;
+    }
+    .event {
+      margin-bottom: 10px;
+      padding: 8px;
+      border-radius: 4px;
+    }
+    .create {
+      background-color: #d1ecf1;
+      border-left: 4px solid #0c5460;
+    }
+    .update {
+      background-color: #fff3cd;
+      border-left: 4px solid #856404;
+    }
+    .delete {
+      background-color: #f8d7da;
+      border-left: 4px solid #721c24;
+    }
+    .controls {
+      margin: 20px 0;
+      display: flex;
+      gap: 10px;
+    }
+    button, input {
+      padding: 8px 12px;
+    }
+    button {
+      cursor: pointer;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 4px;
+    }
+    button:hover {
+      background-color: #0069d9;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>AEMOS DataStream Socket Client</h1>
+    
+    <div class="security-warning">
+      <p>⚠️ This is a development tool accessible from localhost only. Not for production use.</p>
+    </div>
+    
+    <div id="status" class="disconnected">Disconnected</div>
+    
+    <div class="controls">
+      <button id="connect">Connect</button>
+      <button id="disconnect">Disconnect</button>
+      <input type="text" id="telemetryId" placeholder="Telemetry ID to join">
+      <button id="joinRoom">Join Telemetry Room</button>
+    </div>
+    
+    <div class="controls">
+      <button id="testPost">Test POST DataStream</button>
+      <button id="testUpdate">Test UPDATE DataStream</button>
+      <button id="testDelete">Test DELETE DataStream</button>
+    </div>
+
+    <h2>Event Log</h2>
+    <div id="eventLog" class="event-log"></div>
+  </div>
+
+  <script>
+    let socket;
+    let currentToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MTEsImVtYWlsIjoidXNlckBleGFtcGxlLmNvbSIsImlhdCI6MTc0NjkwMzc5NSwiZXhwIjoxNzQ2OTkwMTk1fQ.PltqK0uRAAC-b760bxeg3OyVqgSaUGMSt1c6JVNYpLw';
+    const statusEl = document.getElementById('status');
+    const eventLogEl = document.getElementById('eventLog');
+    const connectBtn = document.getElementById('connect');
+    const disconnectBtn = document.getElementById('disconnect');
+    const telemetryIdInput = document.getElementById('telemetryId');
+    const joinRoomBtn = document.getElementById('joinRoom');
+    const testPostBtn = document.getElementById('testPost');
+    const testUpdateBtn = document.getElementById('testUpdate');
+    const testDeleteBtn = document.getElementById('testDelete');
+
+    function updateStatus(connected) {
+      if (connected) {
+        statusEl.textContent = `Connected (Socket ID: ${socket.id})`;
+        statusEl.className = 'connected';
+        connectBtn.disabled = true;
+        disconnectBtn.disabled = false;
+      } else {
+        statusEl.textContent = 'Disconnected';
+        statusEl.className = 'disconnected';
+        connectBtn.disabled = false;
+        disconnectBtn.disabled = true;
+      }
+    }
+
+    function logEvent(event, data, type = '') {
+      const date = new Date().toLocaleTimeString();
+      const eventDiv = document.createElement('div');
+      eventDiv.className = `event ${type}`;
+      
+      eventDiv.innerHTML = `
+        <strong>${date} - ${event}</strong>
+        <pre>${JSON.stringify(data, null, 2)}</pre>
+      `;
+      
+      eventLogEl.prepend(eventDiv);
+    }
+
+    async function makeApiRequest(method, endpoint, data = null) {
+      const options = {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${currentToken}`
+        }
+      };
+
+      if (data && (method === 'POST' || method === 'PATCH')) {
+        options.body = JSON.stringify(data);
+      }
+
+      try {
+        const response = await fetch(`/api/v1${endpoint}`, options);
+        
+        if (!response.ok) {
+          throw new Error(`API request failed with status ${response.status}`);
+        }
+        
+        if (response.status === 204) {
+          return { success: true };
+        }
+        
+        return await response.json();
+      } catch (error) {
+        console.error('API request error:', error);
+        logEvent('api-error', { error: error.message }, 'delete');
+        return { error: error.message };
+      }
+    }
+
+    connectBtn.addEventListener('click', () => {
+      // Connect to the Socket.io server
+      socket = io({
+        transports: ['websocket', 'polling'],
+        path: '/socket.io',
+        reconnection: true,
+        reconnectionAttempts: 10,
+        reconnectionDelay: 1000
+      });
+      
+      socket.on('connect', () => {
+        updateStatus(true);
+        logEvent('connect', { socketId: socket.id });
+      });
+      
+      socket.on('connect_error', (error) => {
+        logEvent('connect_error', { error: error.message }, 'delete');
+      });
+      
+      socket.on('disconnect', () => {
+        updateStatus(false);
+        logEvent('disconnect', {});
+      });
+      
+      // Listen for all datastream events
+      socket.on('datastreams-update', (data) => {
+        logEvent('datastreams-update', data, data.type);
+      });
+      
+      // Listen for specific datastream events
+      socket.on('new-datastream', (data) => {
+        logEvent('new-datastream', data, 'create');
+      });
+      
+      socket.on('update-datastream', (data) => {
+        logEvent('update-datastream', data, 'update');
+      });
+      
+      socket.on('delete-datastream', (data) => {
+        logEvent('delete-datastream', data, 'delete');
+      });
+    });
+
+    disconnectBtn.addEventListener('click', () => {
+      if (socket) {
+        socket.disconnect();
+      }
+    });
+
+    joinRoomBtn.addEventListener('click', () => {
+      const telemetryId = telemetryIdInput.value.trim();
+      if (socket && socket.connected && telemetryId) {
+        socket.emit('join', `telemetry-${telemetryId}`);
+        logEvent('join-room', { room: `telemetry-${telemetryId}` });
+      } else {
+        alert('Please connect to the server and enter a valid Telemetry ID');
+      }
+    });
+
+    // Add test buttons for API calls
+    testPostBtn.addEventListener('click', async () => {
+      const result = await makeApiRequest('POST', '/datastreams', {
+        value: `${Math.floor(Math.random() * 100)}.${Math.floor(Math.random() * 10)}`,
+        telemetryDataId: 1,
+        recievedAt: new Date().toISOString()
+      });
+      
+      logEvent('api-post-datastream', result, 'create');
+    });
+
+    testUpdateBtn.addEventListener('click', async () => {
+      // First, get the latest datastream (let's assume ID 1 for simplicity)
+      const id = prompt('Enter DataStream ID to update:', '1');
+      if (id) {
+        const result = await makeApiRequest('PATCH', `/datastreams/${id}`, {
+          value: `${Math.floor(Math.random() * 100)}.${Math.floor(Math.random() * 10)}`
+        });
+        
+        logEvent('api-update-datastream', result, 'update');
+      }
+    });
+
+    testDeleteBtn.addEventListener('click', async () => {
+      const id = prompt('Enter DataStream ID to delete:', '1');
+      if (id) {
+        const result = await makeApiRequest('DELETE', `/datastreams/${id}`);
+        logEvent('api-delete-datastream', { id, result }, 'delete');
+      }
+    });
+
+    // Initialize the UI
+    updateStatus(false);
+    disconnectBtn.disabled = true;
+  </script>
+</body>
+</html> 

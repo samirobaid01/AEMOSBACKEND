@@ -3,6 +3,8 @@ const deviceRoutes = require('./deviceRoutes');
 const organizationRoutes = require('./organizationRoutes');
 const areaRoutes = require('./areaRoutes');
 const sensorRoutes = require('./sensorRoutes');
+const telemetryRoutes = require('./telemetryRoutes');
+const dataStreamRoutes = require('./dataStreamRoutes');
 const authRoutes = require('./authRoutes');
 const sequelize = require('../config/database');
 
@@ -261,6 +263,99 @@ router.get('/insomnia', localhostOnly, (req, res) => {
         auth: true 
       },
     ],
+    telemetry: [
+      { 
+        method: 'GET', 
+        path: '/telemetry', 
+        description: 'Get all telemetry data', 
+        auth: true 
+      },
+      { 
+        method: 'POST', 
+        path: '/telemetry', 
+        description: 'Create telemetry data', 
+        auth: true,
+        params: {
+          variableName: "temperature",
+          datatype: "float",
+          sensorId: 1
+        }
+      },
+      { 
+        method: 'GET', 
+        path: '/telemetry/:id', 
+        description: 'Get telemetry data by ID', 
+        auth: true 
+      },
+      { 
+        method: 'PATCH', 
+        path: '/telemetry/:id', 
+        description: 'Update telemetry data', 
+        auth: true,
+        params: {
+          variableName: "updatedTemperature",
+          datatype: "float"
+        }
+      },
+      { 
+        method: 'DELETE', 
+        path: '/telemetry/:id', 
+        description: 'Delete telemetry data', 
+        auth: true 
+      },
+      { 
+        method: 'GET', 
+        path: '/telemetry/sensor/:sensorId', 
+        description: 'Get telemetry by sensor ID', 
+        auth: true 
+      },
+    ],
+    datastreams: [
+      { 
+        method: 'GET', 
+        path: '/datastreams', 
+        description: 'Get all data streams', 
+        auth: true 
+      },
+      { 
+        method: 'POST', 
+        path: '/datastreams', 
+        description: 'Create a new data stream', 
+        auth: true,
+        params: {
+          value: "25.6",
+          telemetryDataId: 1,
+          recievedAt: new Date().toISOString()
+        }
+      },
+      { 
+        method: 'GET', 
+        path: '/datastreams/:id', 
+        description: 'Get data stream by ID', 
+        auth: true 
+      },
+      { 
+        method: 'PATCH', 
+        path: '/datastreams/:id', 
+        description: 'Update data stream', 
+        auth: true,
+        params: {
+          value: "26.1"
+        }
+      },
+      { 
+        method: 'DELETE', 
+        path: '/datastreams/:id', 
+        description: 'Delete data stream', 
+        auth: true 
+      },
+      { 
+        method: 'GET', 
+        path: '/datastreams/telemetry/:telemetryDataId', 
+        description: 'Get data streams by telemetry data ID', 
+        auth: true 
+      },
+    ],
     devices: [
       { 
         method: 'GET', 
@@ -440,6 +535,8 @@ router.use('/devices', deviceRoutes);
 router.use('/organizations', organizationRoutes);
 router.use('/areas', areaRoutes);
 router.use('/sensors', sensorRoutes);
+router.use('/telemetry', telemetryRoutes);
+router.use('/datastreams', dataStreamRoutes);
 
 // Handle undefined routes
 router.all('*', (req, res) => {

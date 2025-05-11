@@ -27,6 +27,12 @@ module.exports = {
     }
   },
   
+  notifications: {
+    broadcastAll: process.env.ENABLE_BROADCAST_ALL === 'true', // Default: false
+    bufferSize: parseInt(process.env.NOTIFICATION_BUFFER_SIZE || 1000, 10),
+    broadcastInterval: parseInt(process.env.NOTIFICATION_INTERVAL || 1000, 10) // ms
+  },
+  
   errorHandling: {
     showStackTraces: process.env.NODE_ENV === 'development',
     operationalErrorsOnly: process.env.NODE_ENV === 'production',

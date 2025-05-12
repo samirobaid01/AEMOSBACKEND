@@ -135,6 +135,15 @@ app.use('/api/v1/organizations', organizationRoutes);
 app.use('/api/v1/areas', areaRoutes);
 app.use('/api/v1/sensors', sensorRoutes);
 
+// Test route to verify server is working
+app.get('/test', (req, res) => {
+  console.log('Test route hit!');
+  res.status(200).json({
+    status: 'success',
+    message: 'Server is running correctly!'
+  });
+});
+
 // Handle undefined routes
 app.use('*', (req, res) => {
   res.status(404).json({

@@ -1,6 +1,7 @@
 const { Sensor, TelemetryData } = require('../models/initModels');
 const { ApiError } = require('../middlewares/errorHandler');
 const { v4: uuidv4 } = require('uuid');
+const { sequelize } = require('../config/database');
 
 // SENSOR OPERATIONS
 
@@ -152,6 +153,88 @@ const deleteTelemetryData = async (id) => {
   return true;
 };
 
+/**
+ * Get a sensor with its organization ID for ownership checking
+ * This implementation finds the organization IDs through the Area-Sensor relationship
+ * @param {Number} id - Sensor ID
+ * @returns {Promise<Object>} Sensor with organizationId
+ */
+const getSensorForOwnershipCheck = async (id) => {
+  try {
+    // First check if the sensor exists
+    const sensor = await Sensor.findByPk(id);
+    
+    if (!sensor) {
+      return null; // Sensor doesn't exist
+    }
+    
+    // Find areas this sensor belongs to along with their organizations
+    const query = `
+      SELECT a.organizationId
+      FROM AreaSensor as_rel
+      JOIN Area a ON as_rel.areaId = a.id
+      WHERE as_rel.sensorId = :sensorId
+      LIMIT 1
+    `;
+    
+    const results = await sequelize.query(query, {
+      replacements: { sensorId: id },
+      type: sequelize.QueryTypes.SELECT
+    });
+    
+    if (results && results.length > 0 && results[0].organizationId) {
+      return {
+        id: sensor.id,
+        organizationId: results[0].organizationId
+      };
+    }
+    
+    // If no organization found through area relationship, return sensor with null organizationId
+    console.warn(`Sensor ${id} is not assigned to any area with an organization. Bypassing organization check.`);
+    return {
+      id: sensor.id,
+      organizationId: null
+    };
+  } catch (error) {
+    console.error('Error in getSensorForOwnershipCheck:', error.message);
+    return null;
+  }
+};
+
+/**
+ * Get sensors by organization IDs using the Area-Sensor relationship
+ * @param {Array} organizationIds - Array of organization IDs
+ * @returns {Promise<Array>} Array of sensors
+ */
+const getSensorsByOrganizations = async (organizationIds) => {
+  try {
+    if (!organizationIds || organizationIds.length === 0) {
+      return [];
+    }
+
+    // Query to get sensors from areas that belong to the specified organizations
+    const query = `
+      SELECT DISTINCT s.*
+      FROM Sensor s
+      JOIN AreaSensor as_rel ON s.id = as_rel.sensorId
+      JOIN Area a ON as_rel.areaId = a.id
+      WHERE a.organizationId IN (:organizationIds)
+    `;
+    
+    const sensors = await sequelize.query(query, {
+      replacements: { organizationIds },
+      type: sequelize.QueryTypes.SELECT,
+      model: Sensor,
+      mapToModel: true
+    });
+    
+    return sensors;
+  } catch (error) {
+    console.error('Error in getSensorsByOrganizations:', error.message);
+    return [];
+  }
+};
+
 module.exports = {
   // Sensor operations
   getAllSensors,
@@ -166,5 +249,8 @@ module.exports = {
   getTelemetryDataById,
   createTelemetryData,
   updateTelemetryData,
-  deleteTelemetryData
+  deleteTelemetryData,
+  
+  getSensorForOwnershipCheck,
+  getSensorsByOrganizations
 }; 

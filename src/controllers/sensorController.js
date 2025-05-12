@@ -1,18 +1,35 @@
 const sensorService = require('../services/sensorService');
 const { ApiError } = require('../middlewares/errorHandler');
+const roleService = require('../services/roleService');
 
 // SENSOR ENDPOINTS
 
 // Get all sensors
 const getAllSensors = async (req, res, next) => {
   try {
-    const sensors = await sensorService.getAllSensors();
+    // Check if user is a System Admin
+    const isSystemAdmin = await roleService.userIsSystemAdmin(req.user.id);
+    
+    let sensors;
+    
+    // If System Admin, get all sensors
+    if (isSystemAdmin) {
+      sensors = await sensorService.getAllSensors();
+    } else {
+      // Get user's organizations
+      const userOrgs = await roleService.getUserOrganizations(req.user.id);
+      const orgIds = userOrgs.map(org => org.id);
+      
+      // Get sensors for user's organizations only
+      sensors = await sensorService.getSensorsByOrganizations(orgIds);
+    }
+    
     res.status(200).json({
       status: 'success',
       results: sensors.length,
       data: {
-        sensors,
-      },
+        sensors
+      }
     });
   } catch (error) {
     next(error);

@@ -83,11 +83,29 @@ const deleteArea = async (id) => {
   return true;
 };
 
+/**
+ * Get an area with just its organization ID for ownership checking
+ * @param {Number} id - Area ID
+ * @returns {Promise<Object>} Area with organizationId
+ */
+const getAreaForOwnershipCheck = async (id) => {
+  try {
+    return await Area.findByPk(id, {
+      attributes: ['id', 'organizationId'],
+      raw: true
+    });
+  } catch (error) {
+    console.error('Error in getAreaForOwnershipCheck:', error.message);
+    return null;
+  }
+};
+
 module.exports = {
   getAllAreas,
   getAreaById,
   getAreasByOrganization,
   createArea,
   updateArea,
-  deleteArea
+  deleteArea,
+  getAreaForOwnershipCheck
 }; 

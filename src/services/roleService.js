@@ -1,5 +1,6 @@
-const { Role, Permission, OrganizationUser, User } = require('../models/initModels');
+const { Role, Permission, OrganizationUser, User, Organization } = require('../models/initModels');
 const permissionService = require('./permissionService');
+const { sequelize } = require('../models/initModels');
 
 /**
  * Get all roles
@@ -162,6 +163,45 @@ async function removeUserRole(userId, organizationId) {
   });
 }
 
+/**
+ * Check if a user is a System Admin
+ * @param {Number} userId - ID of the user
+ * @returns {Promise<Boolean>} True if user is a System Admin
+ */
+async function userIsSystemAdmin(userId) {
+  const query = `
+    SELECT COUNT(*) as count
+    FROM User u
+    JOIN OrganizationUser ou ON u.id = ou.userId
+    JOIN Role r ON ou.role = r.id
+    WHERE u.id = :userId AND r.name = 'System Admin'
+  `;
+  
+  const [result] = await sequelize.query(query, { 
+    replacements: { userId },
+    type: sequelize.QueryTypes.SELECT 
+  });
+  
+  return result.count > 0;
+}
+
+/**
+ * Get all organizations a user belongs to
+ * @param {Number} userId - ID of the user
+ * @returns {Promise<Array>} Array of organizations
+ */
+async function getUserOrganizations(userId) {
+  return await Organization.findAll({
+    include: [
+      {
+        model: OrganizationUser,
+        where: { userId },
+        required: true
+      }
+    ]
+  });
+}
+
 module.exports = {
   getAllRoles,
   getRoleById,
@@ -172,5 +212,7 @@ module.exports = {
   updateRole,
   deleteRole,
   assignRoleToUser,
-  removeUserRole
+  removeUserRole,
+  userIsSystemAdmin,
+  getUserOrganizations
 }; 

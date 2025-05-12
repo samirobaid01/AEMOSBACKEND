@@ -122,14 +122,16 @@ router.get('/insomnia', localhostOnly, (req, res) => {
       { 
         method: 'GET', 
         path: '/organizations', 
-        description: 'Get all organizations', 
-        auth: true 
+        description: 'Get all organizations (filtered by user access for non-System Admins)', 
+        auth: true,
+        permissions: ['organization.view']
       },
       { 
         method: 'POST', 
         path: '/organizations', 
         description: 'Create a new organization', 
         auth: true,
+        permissions: ['organization.create'],
         params: {
           name: "Organization Name",
           parentId: null,
@@ -147,14 +149,16 @@ router.get('/insomnia', localhostOnly, (req, res) => {
       { 
         method: 'GET', 
         path: '/organizations/:id', 
-        description: 'Get organization by ID', 
-        auth: true 
+        description: 'Get organization by ID (requires organization ownership or System Admin)', 
+        auth: true,
+        permissions: ['organization.view']
       },
       { 
         method: 'PATCH', 
         path: '/organizations/:id', 
-        description: 'Update organization', 
+        description: 'Update organization (requires organization ownership or System Admin)', 
         auth: true,
+        permissions: ['organization.update'],
         params: {
           name: "Updated Organization Name",
           status: true,
@@ -164,22 +168,25 @@ router.get('/insomnia', localhostOnly, (req, res) => {
       { 
         method: 'DELETE', 
         path: '/organizations/:id', 
-        description: 'Delete organization', 
-        auth: true 
+        description: 'Delete organization (requires organization ownership or System Admin)', 
+        auth: true,
+        permissions: ['organization.delete']
       },
     ],
     areas: [
       { 
         method: 'GET', 
         path: '/areas', 
-        description: 'Get all areas', 
-        auth: true 
+        description: 'Get all areas (filtered by user organization for non-System Admins)', 
+        auth: true,
+        permissions: ['area.view']
       },
       { 
         method: 'POST', 
         path: '/areas', 
         description: 'Create a new area', 
         auth: true,
+        permissions: ['area.create'],
         params: {
           name: "Area Name",
           organizationId: 1,
@@ -190,14 +197,16 @@ router.get('/insomnia', localhostOnly, (req, res) => {
       { 
         method: 'GET', 
         path: '/areas/:id', 
-        description: 'Get area by ID', 
-        auth: true 
+        description: 'Get area by ID (requires organization ownership or System Admin)', 
+        auth: true,
+        permissions: ['area.view']
       },
       { 
         method: 'PATCH', 
         path: '/areas/:id', 
-        description: 'Update area', 
+        description: 'Update area (requires organization ownership or System Admin)', 
         auth: true,
+        permissions: ['area.update'],
         params: {
           name: "Updated Area Name",
           description: "Updated description",
@@ -207,28 +216,32 @@ router.get('/insomnia', localhostOnly, (req, res) => {
       { 
         method: 'DELETE', 
         path: '/areas/:id', 
-        description: 'Delete area', 
-        auth: true 
+        description: 'Delete area (requires organization ownership or System Admin)', 
+        auth: true,
+        permissions: ['area.delete']
       },
       { 
         method: 'GET', 
         path: '/areas/organization/:organizationId', 
         description: 'Get areas by organization', 
-        auth: true 
+        auth: true,
+        permissions: ['area.view']
       },
     ],
     sensors: [
       { 
         method: 'GET', 
         path: '/sensors', 
-        description: 'Get all sensors', 
-        auth: true 
+        description: 'Get all sensors (filtered by user organization for non-System Admins)', 
+        auth: true,
+        permissions: ['sensor.view']
       },
       { 
         method: 'POST', 
         path: '/sensors', 
         description: 'Create a new sensor', 
         auth: true,
+        permissions: ['sensor.create'],
         params: {
           name: "Sensor Name",
           areaId: 1,
@@ -244,14 +257,16 @@ router.get('/insomnia', localhostOnly, (req, res) => {
       { 
         method: 'GET', 
         path: '/sensors/:id', 
-        description: 'Get sensor by ID', 
-        auth: true 
+        description: 'Get sensor by ID (requires organization ownership or System Admin)', 
+        auth: true,
+        permissions: ['sensor.view']
       },
       { 
         method: 'PATCH', 
         path: '/sensors/:id', 
-        description: 'Update sensor', 
+        description: 'Update sensor (requires organization ownership or System Admin)', 
         auth: true,
+        permissions: ['sensor.update'],
         params: {
           name: "Updated Sensor Name",
           type: "Temperature",
@@ -262,8 +277,9 @@ router.get('/insomnia', localhostOnly, (req, res) => {
       { 
         method: 'DELETE', 
         path: '/sensors/:id', 
-        description: 'Delete sensor', 
-        auth: true 
+        description: 'Delete sensor (requires organization ownership or System Admin)', 
+        auth: true,
+        permissions: ['sensor.delete']
       },
     ],
     telemetry: [
@@ -363,14 +379,16 @@ router.get('/insomnia', localhostOnly, (req, res) => {
       { 
         method: 'GET', 
         path: '/devices', 
-        description: 'Get all devices', 
-        auth: true 
+        description: 'Get all devices (filtered by user organization for non-System Admins)', 
+        auth: true,
+        permissions: ['device.view']
       },
       { 
         method: 'POST', 
         path: '/devices', 
         description: 'Create a new device', 
         auth: true,
+        permissions: ['device.create'],
         params: {
           name: "Device Name",
           serialNumber: "ABC123XYZ",
@@ -388,14 +406,16 @@ router.get('/insomnia', localhostOnly, (req, res) => {
       { 
         method: 'GET', 
         path: '/devices/:id', 
-        description: 'Get device by ID', 
-        auth: true 
+        description: 'Get device by ID (requires organization ownership or System Admin)', 
+        auth: true,
+        permissions: ['device.view']
       },
       { 
         method: 'PATCH', 
         path: '/devices/:id', 
-        description: 'Update device', 
+        description: 'Update device (requires organization ownership or System Admin)', 
         auth: true,
+        permissions: ['device.update'],
         params: {
           name: "Updated Device Name",
           firmware: "v1.3.0",
@@ -409,9 +429,131 @@ router.get('/insomnia', localhostOnly, (req, res) => {
       { 
         method: 'DELETE', 
         path: '/devices/:id', 
-        description: 'Delete device', 
-        auth: true 
+        description: 'Delete device (requires organization ownership or System Admin)', 
+        auth: true,
+        permissions: ['device.delete']
       },
+    ],
+    roles: [
+      {
+        method: 'GET',
+        path: '/roles',
+        description: 'Get all roles (System Admin can see all, others can only see their organization roles)',
+        auth: true,
+        permissions: ['role.view']
+      },
+      {
+        method: 'POST',
+        path: '/roles',
+        description: 'Create a new role',
+        auth: true,
+        permissions: ['role.assign'],
+        params: {
+          name: "Custom Role",
+          description: "Custom role description",
+          organizationId: 1
+        }
+      },
+      {
+        method: 'GET',
+        path: '/roles/:id',
+        description: 'Get role by ID',
+        auth: true,
+        permissions: ['role.view']
+      },
+      {
+        method: 'PUT',
+        path: '/roles/:id',
+        description: 'Update a role',
+        auth: true,
+        permissions: ['role.assign'],
+        params: {
+          name: "Updated Role Name",
+          description: "Updated role description"
+        }
+      },
+      {
+        method: 'DELETE',
+        path: '/roles/:id',
+        description: 'Delete a role',
+        auth: true,
+        permissions: ['role.assign']
+      },
+      {
+        method: 'GET',
+        path: '/roles/organization/:organizationId',
+        description: 'Get roles for an organization',
+        auth: true,
+        permissions: ['role.view']
+      },
+      {
+        method: 'GET',
+        path: '/roles/:id/permissions',
+        description: 'Get permissions for a role',
+        auth: true,
+        permissions: ['role.view']
+      },
+      {
+        method: 'POST',
+        path: '/roles/:id/permissions',
+        description: 'Add permission to a role',
+        auth: true,
+        permissions: ['permission.manage'],
+        params: {
+          permissionId: 1
+        }
+      },
+      {
+        method: 'DELETE',
+        path: '/roles/:id/permissions/:permissionId',
+        description: 'Remove permission from a role',
+        auth: true,
+        permissions: ['permission.manage']
+      }
+    ],
+    permissions: [
+      {
+        method: 'GET',
+        path: '/permissions',
+        description: 'Get all permissions',
+        auth: true,
+        permissions: ['permission.view']
+      },
+      {
+        method: 'GET',
+        path: '/permissions/:id',
+        description: 'Get permission by ID',
+        auth: true,
+        permissions: ['permission.view']
+      }
+    ],
+    userRoles: [
+      {
+        method: 'GET',
+        path: '/user-roles',
+        description: 'Get all user roles',
+        auth: true,
+        permissions: ['role.view']
+      },
+      {
+        method: 'POST',
+        path: '/user-roles',
+        description: 'Assign role to user',
+        auth: true,
+        permissions: ['role.assign'],
+        params: {
+          userId: 1,
+          roleId: 1,
+          organizationId: 1
+        }
+      },
+      {
+        method: 'DELETE',
+        path: '/user-roles/:userId/:roleId',
+        description: 'Remove role from user',
+        auth: true,
+        permissions: ['role.assign']
+      }
     ]
   };
   
@@ -440,7 +582,11 @@ router.get('/insomnia', localhostOnly, (req, res) => {
     name: 'Base Environment',
     data: {
       base_url: baseUrl,
-      token: ''
+      token: '',
+      system_admin_token: '-- System Admin JWT Token --',
+      org_admin_token: '-- Org Admin JWT Token --',
+      supervisor_token: '-- Supervisor JWT Token --',
+      viewer_token: '-- Viewer JWT Token --'
     },
     color: null,
     isPrivate: false,
@@ -448,6 +594,58 @@ router.get('/insomnia', localhostOnly, (req, res) => {
     modified: Date.now(),
     parentId: workspaceId,
     _type: 'environment'
+  });
+
+  // Add README file
+  const readmeId = `req_readme_${Math.random().toString(36).substring(2, 15)}`;
+  resources.push({
+    _id: readmeId,
+    parentId: workspaceId,
+    modified: Date.now(),
+    created: Date.now(),
+    url: '',
+    name: '📚 RBAC & Authorization',
+    description: `# AEMOS API RBAC System
+
+## Role-Based Access Control
+
+This API implements role-based access control (RBAC) with organization-based resource isolation:
+
+### Roles
+- **System Admin**: Full access to all system functionalities across all organizations
+- **Org Admin**: Full access within their organization only
+- **Supervisor**: View access and report generation capabilities within their organization
+- **Viewer**: Read-only access to system data within their organization
+
+### Key Authorization Concepts
+
+1. **Permission Requirements**: Each endpoint requires specific permissions (e.g., 'device.view', 'device.update')
+2. **Organization-Based Access**: Regular users can only access resources within their own organization
+3. **System Admin Exception**: System Admins can access all resources regardless of organization
+4. **JWT Tokens**: Authentication tokens contain user permissions and roles
+
+### Using this Collection
+
+1. Use the environment variables to switch between different role tokens:
+   - {{ token }}: Your current token
+   - {{ system_admin_token }}: For System Admin access
+   - {{ org_admin_token }}: For Organization Admin access
+   - {{ supervisor_token }}: For Supervisor access
+   - {{ viewer_token }}: For Viewer access
+
+2. All resource-specific endpoints (GET /resource/:id, PATCH /resource/:id, DELETE /resource/:id) check both:
+   - If the user has the appropriate permission
+   - If the resource belongs to the user's organization (unless System Admin)
+
+3. List endpoints (GET /resources) automatically filter results by organization for non-System Admin users`,
+    method: 'GET',
+    body: {},
+    parameters: [],
+    headers: [],
+    authentication: {},
+    metaSortKey: 0,
+    isPrivate: false,
+    _type: 'request'
   });
 
   // Create folder for each category
@@ -469,10 +667,98 @@ router.get('/insomnia', localhostOnly, (req, res) => {
     });
   });
   
+  // Add Examples folder
+  const examplesFolderId = `fld_examples_${Math.random().toString(36).substring(2, 15)}`;
+  resources.push({
+    _id: examplesFolderId,
+    parentId: workspaceId,
+    modified: Date.now(),
+    created: Date.now(),
+    name: '💡 Examples',
+    description: 'Example flows demonstrating RBAC and organization-based access',
+    environment: {},
+    metaSortKey: 900,
+    _type: 'request_group'
+  });
+  
+  // Add example requests
+  const examples = [
+    {
+      name: 'System Admin: Access Any Device',
+      description: `# System Admin Access\n\nThis request demonstrates how a System Admin can access any device across all organizations.\n\n1. Set the 'Authorization' header to use the System Admin token\n2. The System Admin can view any device regardless of organization\n3. No additional checks are needed beyond having the 'device.view' permission`,
+      method: 'GET',
+      url: `${baseUrl}/devices/1`,
+      headers: [
+        { name: 'Authorization', value: 'Bearer {{ system_admin_token }}' }
+      ]
+    },
+    {
+      name: 'Org Admin: Access Within Organization',
+      description: `# Organization-Based Access\n\nThis request demonstrates how an Org Admin is restricted to devices within their organization.\n\n1. Set the 'Authorization' header to use the Org Admin token\n2. The request will only succeed if Device ID 1 belongs to the Org Admin's organization\n3. If it belongs to another organization, a 403 Forbidden error is returned\n\nThis showcases the organization-based access control mechanism.`,
+      method: 'GET',
+      url: `${baseUrl}/devices/1`,
+      headers: [
+        { name: 'Authorization', value: 'Bearer {{ org_admin_token }}' }
+      ]
+    },
+    {
+      name: 'Viewer: Limited Permissions',
+      description: `# Permission-Based Access\n\nThis request demonstrates permission-based restrictions for a Viewer role.\n\n1. A Viewer can view devices in their organization (/devices/1) successfully\n2. But attempting to update or delete will fail with 403 Forbidden\n\nThis showcases the permission-based access control aspect of the RBAC system.`,
+      method: 'GET',
+      url: `${baseUrl}/devices/1`,
+      headers: [
+        { name: 'Authorization', value: 'Bearer {{ viewer_token }}' }
+      ]
+    }
+  ];
+  
+  examples.forEach((example, index) => {
+    const exampleId = `req_example_${index}_${Math.random().toString(36).substring(2, 15)}`;
+    resources.push({
+      _id: exampleId,
+      parentId: examplesFolderId,
+      modified: Date.now(),
+      created: Date.now(),
+      url: example.url,
+      name: example.name,
+      description: example.description,
+      method: example.method,
+      headers: [
+        {
+          name: 'Content-Type',
+          value: 'application/json',
+          description: ''
+        },
+        ...example.headers
+      ],
+      body: {},
+      parameters: [],
+      authentication: {},
+      metaSortKey: (index + 1) * 100,
+      isPrivate: false,
+      settingStoreCookies: true,
+      settingSendCookies: true,
+      settingDisableRenderRequestBody: false,
+      settingEncodeUrl: true,
+      settingRebuildPath: true,
+      settingFollowRedirects: 'global',
+      _type: 'request'
+    });
+  });
+  
   // Add each endpoint as a request within appropriate folder
   Object.entries(routes).forEach(([category, categoryRoutes]) => {
     categoryRoutes.forEach((route, index) => {
       const requestId = `req_${Math.random().toString(36).substring(2, 15)}`;
+      
+      // Build endpoint description with permission info
+      let fullDescription = route.description || '';
+      
+      if (route.permissions && route.permissions.length > 0) {
+        fullDescription += `\n\nRequired Permissions: ${route.permissions.join(', ')}`;
+        fullDescription += `\n\nAccess Control:\n- System Admin: Full access to all resources\n- Other roles: Access limited to resources within their organization`;
+      }
+      
       resources.push({
         _id: requestId,
         parentId: folderIds[category],
@@ -480,11 +766,11 @@ router.get('/insomnia', localhostOnly, (req, res) => {
         created: Date.now(),
         url: baseUrl + route.path,
         name: `${route.method} ${route.path}`,
-        description: route.description,
+        description: fullDescription,
         method: route.method,
         body: {
           mimeType: 'application/json',
-          text: (route.method === 'POST' || route.method === 'PATCH') && route.params 
+          text: (route.method === 'POST' || route.method === 'PATCH' || route.method === 'PUT') && route.params 
             ? JSON.stringify(route.params, null, 2) 
             : ''
         },

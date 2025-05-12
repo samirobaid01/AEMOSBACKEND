@@ -2,8 +2,9 @@ const express = require('express');
 const sensorController = require('../controllers/sensorController');
 const validate = require('../middlewares/validate');
 const { authenticate } = require('../middlewares/auth');
-const { checkPermission } = require('../middlewares/permission');
+const { checkPermission, checkResourceOwnership } = require('../middlewares/permission');
 const { sensorSchema } = require('../validators/sensorValidators');
+const { getSensorForOwnershipCheck } = require('../services/sensorService');
 
 const router = express.Router();
 
@@ -15,8 +16,24 @@ router
 
 router
   .route('/:id')
-  .get(authenticate, checkPermission('sensor.view'), sensorController.getSensorById)
-  .patch(authenticate, validate(sensorSchema.update), checkPermission('sensor.update'), sensorController.updateSensor)
-  .delete(authenticate, checkPermission('sensor.delete'), sensorController.deleteSensor);
+  .get(
+    authenticate, 
+    checkPermission('sensor.view'),
+    checkResourceOwnership(getSensorForOwnershipCheck),
+    sensorController.getSensorById
+  )
+  .patch(
+    authenticate, 
+    validate(sensorSchema.update), 
+    checkPermission('sensor.update'),
+    checkResourceOwnership(getSensorForOwnershipCheck),
+    sensorController.updateSensor
+  )
+  .delete(
+    authenticate, 
+    checkPermission('sensor.delete'),
+    checkResourceOwnership(getSensorForOwnershipCheck),
+    sensorController.deleteSensor
+  );
 
 module.exports = router; 

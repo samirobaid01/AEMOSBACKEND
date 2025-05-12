@@ -1,5 +1,6 @@
 const deviceService = require('../services/deviceService');
 const { ApiError } = require('../middlewares/errorHandler');
+const roleService = require('../services/roleService');
 
 // Get all devices
 const getAllDevices = async (req, res, next) => {
@@ -10,7 +11,22 @@ const getAllDevices = async (req, res, next) => {
     // Add debugging information
     console.log('User:', req.user);
     
-    const devices = await deviceService.getAllDevices();
+    // Check if user is a System Admin
+    const isSystemAdmin = await roleService.userIsSystemAdmin(req.user.id);
+    
+    let devices;
+    
+    // If System Admin, get all devices
+    if (isSystemAdmin) {
+      devices = await deviceService.getAllDevices();
+    } else {
+      // Get user's organizations
+      const userOrgs = await roleService.getUserOrganizations(req.user.id);
+      const orgIds = userOrgs.map(org => org.id);
+      
+      // Get devices for user's organizations only
+      devices = await deviceService.getDevicesByOrganizations(orgIds);
+    }
     
     // Log success
     console.log(`Retrieved ${devices.length} devices`);
@@ -34,12 +50,17 @@ const getAllDevices = async (req, res, next) => {
 const getDeviceById = async (req, res, next) => {
   try {
     const { id } = req.params;
+    console.log(`Getting device by ID: ${id}`);
+    
     const device = await deviceService.getDeviceById(id);
+    console.log(`Device result:`, device);
     
     if (!device) {
+      console.log(`Device with ID ${id} not found in controller`);
       return next(new ApiError(404, `Device with ID ${id} not found`));
     }
     
+    console.log(`Successfully found device: ${device.name}`);
     res.status(200).json({
       status: 'success',
       data: {
@@ -47,6 +68,7 @@ const getDeviceById = async (req, res, next) => {
       }
     });
   } catch (error) {
+    console.error(`Error in getDeviceById:`, error);
     next(error);
   }
 };

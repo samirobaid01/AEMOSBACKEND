@@ -67,7 +67,27 @@ async function getUserEffectivePermissions(userId, organizationId = null) {
  * @returns {Promise<Boolean>} True if user has permission
  */
 async function userHasPermission(userId, permissionName, organizationId = null) {
-  const query = `
+  // First check if user is a System Admin - they have all permissions
+  const systemAdminQuery = `
+    SELECT COUNT(*) as count
+    FROM User u
+    JOIN OrganizationUser ou ON u.id = ou.userId
+    JOIN Role r ON ou.role = r.id
+    WHERE u.id = :userId AND r.name = 'System Admin'
+  `;
+  
+  const [systemAdminResult] = await sequelize.query(systemAdminQuery, { 
+    replacements: { userId },
+    type: sequelize.QueryTypes.SELECT 
+  });
+  
+  // If user is System Admin, they have all permissions
+  if (systemAdminResult.count > 0) {
+    return true;
+  }
+  
+  // Otherwise, check specific permission and organization
+  let query = `
     SELECT COUNT(*) as count
     FROM User u
     JOIN OrganizationUser ou ON u.id = ou.userId
@@ -75,8 +95,12 @@ async function userHasPermission(userId, permissionName, organizationId = null) 
     JOIN RolePermission rp ON r.id = rp.roleId
     JOIN Permission p ON rp.permissionId = p.id
     WHERE u.id = :userId AND p.name = :permissionName
-    ${organizationId ? 'AND ou.organizationId = :organizationId' : ''}
   `;
+  
+  // If organizationId is provided, add organization check
+  if (organizationId) {
+    query += ` AND ou.organizationId = :organizationId`;
+  }
   
   const params = { userId, permissionName };
   if (organizationId) {

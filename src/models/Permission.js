@@ -1,24 +1,24 @@
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/database');
 
-const Role = sequelize.define('Role', {
+const Permission = sequelize.define('Permission', {
   id: {
     type: DataTypes.BIGINT,
     primaryKey: true,
     autoIncrement: true
   },
   name: {
-    type: DataTypes.STRING(50),
+    type: DataTypes.STRING(100),
     allowNull: false,
     unique: true
   },
-  organizationId: {
-    type: DataTypes.BIGINT,
+  description: {
+    type: DataTypes.TEXT,
     allowNull: true
   }
 }, {
-  tableName: 'Role',
+  tableName: 'Permission',
   timestamps: false
 });
 
-module.exports = Role; 
+module.exports = Permission; 

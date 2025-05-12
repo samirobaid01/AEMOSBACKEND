@@ -2,7 +2,7 @@ const request = require('supertest');
 const jwt = require('jsonwebtoken');
 const config = require('../../src/config');
 
-// Mock auth middleware before requiring app
+// Mock all middleware before requiring app
 jest.mock('../../src/middlewares/auth', () => ({
   authenticate: (req, res, next) => {
     // Add a mock user to the request
@@ -18,20 +18,24 @@ jest.mock('../../src/middlewares/auth', () => ({
   authorize: (roles) => (req, res, next) => next()
 }));
 
-// Now require the app after mocking
-const app = require('../../src/app');
-const { Device } = require('../../src/models/initModels');
-
-// Mock Sequelize models
-jest.mock('../../src/models/initModels', () => ({
-  Device: {
-    findAll: jest.fn(),
-    findByPk: jest.fn(),
-    create: jest.fn(),
-    update: jest.fn(),
-    destroy: jest.fn()
-  }
+// Mock the permission middleware
+jest.mock('../../src/middlewares/permission', () => ({
+  checkPermission: () => (req, res, next) => next(),
+  checkOrgPermission: () => (req, res, next) => next()
 }));
+
+// Mock the deviceService
+jest.mock('../../src/services/deviceService', () => ({
+  getAllDevices: jest.fn(),
+  getDeviceById: jest.fn(),
+  createDevice: jest.fn(),
+  updateDevice: jest.fn(),
+  deleteDevice: jest.fn()
+}));
+
+// Now require the app and services
+const app = require('../../src/app');
+const deviceService = require('../../src/services/deviceService');
 
 describe('Device API Endpoints', () => {
   afterEach(() => {
@@ -45,7 +49,7 @@ describe('Device API Endpoints', () => {
         { id: 1, name: 'Device 1' },
         { id: 2, name: 'Device 2' },
       ];
-      Device.findAll.mockResolvedValue(mockDevices);
+      deviceService.getAllDevices.mockResolvedValue(mockDevices);
       
       // Act
       const response = await request(app)
@@ -62,7 +66,7 @@ describe('Device API Endpoints', () => {
     it('should return a device by id', async () => {
       // Arrange
       const mockDevice = { id: 1, name: 'Device 1' };
-      Device.findByPk.mockResolvedValue(mockDevice);
+      deviceService.getDeviceById.mockResolvedValue(mockDevice);
 
       // Act
       const response = await request(app)
@@ -76,7 +80,7 @@ describe('Device API Endpoints', () => {
 
     it('should return 404 if device not found', async () => {
       // Arrange
-      Device.findByPk.mockResolvedValue(null);
+      deviceService.getDeviceById.mockResolvedValue(null);
 
       // Act
       const response = await request(app)
@@ -101,7 +105,7 @@ describe('Device API Endpoints', () => {
         uuid: '123e4567-e89b-12d3-a456-426614174000'
       };
       
-      Device.create.mockResolvedValue(mockCreatedDevice);
+      deviceService.createDevice.mockResolvedValue(mockCreatedDevice);
 
       // Act
       const response = await request(app)

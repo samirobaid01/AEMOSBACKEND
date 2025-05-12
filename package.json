@@ -20,7 +20,8 @@
     "test:health": "jest tests/health",
     "test:feature-flags": "jest tests/feature-flags",
     "test:unit": "jest tests/unit",
-    "test:integration": "jest tests/integration"
+    "test:integration": "jest tests/integration",
+    "test:rbac": "jest tests/rbac"
   },
   "repository": {
     "type": "git",
@@ -47,6 +48,7 @@
     "express": "^4.18.2",
     "express-mongo-sanitize": "^2.2.0",
     "express-rate-limit": "^7.5.0",
+    "express-validator": "^7.0.1",
     "helmet": "^8.1.0",
     "hpp": "^0.2.3",
     "joi": "^17.12.2",

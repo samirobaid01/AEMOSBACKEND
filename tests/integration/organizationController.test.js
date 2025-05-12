@@ -1,7 +1,6 @@
 const request = require('supertest');
-const { Organization } = require('../../src/models/initModels');
 
-// Mock auth middleware before requiring app
+// Mock all middleware before requiring app
 jest.mock('../../src/middlewares/auth', () => ({
   authenticate: (req, res, next) => {
     // Add a mock user to the request
@@ -17,19 +16,24 @@ jest.mock('../../src/middlewares/auth', () => ({
   authorize: (roles) => (req, res, next) => next()
 }));
 
-// Now require the app after mocking
-const app = require('../../src/app');
-
-// Mock Sequelize models
-jest.mock('../../src/models/initModels', () => ({
-  Organization: {
-    findAll: jest.fn(),
-    findByPk: jest.fn(),
-    create: jest.fn(),
-    update: jest.fn().mockImplementation(function() { return Promise.resolve([1, [this]]); }),
-    destroy: jest.fn().mockResolvedValue(1)
-  }
+// Mock the permission middleware
+jest.mock('../../src/middlewares/permission', () => ({
+  checkPermission: () => (req, res, next) => next(),
+  checkOrgPermission: () => (req, res, next) => next()
 }));
+
+// Mock the organizationService
+jest.mock('../../src/services/organizationService', () => ({
+  getAllOrganizations: jest.fn(),
+  getOrganizationById: jest.fn(),
+  createOrganization: jest.fn(),
+  updateOrganization: jest.fn(),
+  deleteOrganization: jest.fn()
+}));
+
+// Now require the app and services
+const app = require('../../src/app');
+const organizationService = require('../../src/services/organizationService');
 
 describe('Organization API Endpoints', () => {
   afterEach(() => {
@@ -43,7 +47,7 @@ describe('Organization API Endpoints', () => {
         { id: 1, name: 'Organization 1' },
         { id: 2, name: 'Organization 2' },
       ];
-      Organization.findAll.mockResolvedValue(mockOrganizations);
+      organizationService.getAllOrganizations.mockResolvedValue(mockOrganizations);
       
       // Act
       const response = await request(app)
@@ -60,7 +64,7 @@ describe('Organization API Endpoints', () => {
     it('should return an organization by id', async () => {
       // Arrange
       const mockOrganization = { id: 1, name: 'Organization 1' };
-      Organization.findByPk.mockResolvedValue(mockOrganization);
+      organizationService.getOrganizationById.mockResolvedValue(mockOrganization);
 
       // Act
       const response = await request(app)
@@ -74,7 +78,7 @@ describe('Organization API Endpoints', () => {
 
     it('should return 404 if organization not found', async () => {
       // Arrange
-      Organization.findByPk.mockResolvedValue(null);
+      organizationService.getOrganizationById.mockResolvedValue(null);
 
       // Act
       const response = await request(app)
@@ -98,7 +102,7 @@ describe('Organization API Endpoints', () => {
         ...mockOrganizationData
       };
       
-      Organization.create.mockResolvedValue(mockCreatedOrganization);
+      organizationService.createOrganization.mockResolvedValue(mockCreatedOrganization);
 
       // Act
       const response = await request(app)
@@ -124,11 +128,10 @@ describe('Organization API Endpoints', () => {
         id: 1, 
         name: 'Updated Organization',
         detail: 'Updated details',
-        status: true,
-        update: jest.fn().mockResolvedValue(true)
+        status: true
       };
       
-      Organization.findByPk.mockResolvedValue(mockUpdatedOrganization);
+      organizationService.updateOrganization.mockResolvedValue(mockUpdatedOrganization);
 
       // Act
       const response = await request(app)
@@ -138,14 +141,12 @@ describe('Organization API Endpoints', () => {
       // Assert
       expect(response.status).toBe(200);
       expect(response.body.status).toBe('success');
-      // Exclude function properties when comparing
-      const { update, ...orgWithoutFunctions } = mockUpdatedOrganization;
-      expect(response.body.data.organization).toEqual(orgWithoutFunctions);
+      expect(response.body.data.organization).toEqual(mockUpdatedOrganization);
     });
 
     it('should return 404 if organization not found', async () => {
       // Arrange
-      Organization.findByPk.mockResolvedValue(null);
+      organizationService.updateOrganization.mockResolvedValue(null);
 
       // Act
       const response = await request(app)
@@ -160,12 +161,7 @@ describe('Organization API Endpoints', () => {
   describe('DELETE /organizations/:id', () => {
     it('should delete an organization', async () => {
       // Arrange
-      const mockOrganization = { 
-        id: 1, 
-        destroy: jest.fn().mockResolvedValue(true)
-      };
-      
-      Organization.findByPk.mockResolvedValue(mockOrganization);
+      organizationService.deleteOrganization.mockResolvedValue(true);
 
       // Act
       const response = await request(app)
@@ -177,7 +173,7 @@ describe('Organization API Endpoints', () => {
 
     it('should return 404 if organization not found', async () => {
       // Arrange
-      Organization.findByPk.mockResolvedValue(null);
+      organizationService.deleteOrganization.mockResolvedValue(false);
 
       // Act
       const response = await request(app)

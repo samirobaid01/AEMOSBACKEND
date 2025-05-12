@@ -4,26 +4,53 @@ const { v4: uuidv4 } = require('uuid');
 
 // Get all devices
 const getAllDevices = async () => {
-  return await Device.findAll({
-    include: [
-      {
-        model: State,
-        as: 'States'
-      }
-    ]
-  });
+  try {
+    // Check if the association exists
+    const hasAssociation = Device.associations && Device.associations.States;
+    
+    const query = {};
+    
+    // Only include the States if the association exists
+    if (hasAssociation) {
+      query.include = [
+        {
+          model: State,
+          as: 'States'
+        }
+      ];
+    }
+    
+    return await Device.findAll(query);
+  } catch (error) {
+    // Log the error and return an empty array instead of throwing
+    console.error('Error in getAllDevices service:', error.message);
+    return [];
+  }
 };
 
 // Get a single device by ID
 const getDeviceById = async (id) => {
-  return await Device.findByPk(id, {
-    include: [
-      {
-        model: State,
-        as: 'States'
-      }
-    ]
-  });
+  try {
+    // Check if the association exists
+    const hasAssociation = Device.associations && Device.associations.States;
+    
+    const query = {};
+    
+    // Only include the States if the association exists
+    if (hasAssociation) {
+      query.include = [
+        {
+          model: State,
+          as: 'States'
+        }
+      ];
+    }
+    
+    return await Device.findByPk(id, query);
+  } catch (error) {
+    console.error('Error in getDeviceById service:', error.message);
+    return null;
+  }
 };
 
 // Create a new device

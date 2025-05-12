@@ -6,14 +6,28 @@ const { v4: uuidv4 } = require('uuid');
 
 // Get all sensors
 const getAllSensors = async () => {
-  return await Sensor.findAll({
-    include: [
-      {
-        model: TelemetryData,
-        as: 'TelemetryData'
-      }
-    ]
-  });
+  try {
+    // Check if the association exists
+    const hasAssociation = Sensor.associations && Sensor.associations.TelemetryData;
+    
+    const query = {};
+    
+    // Only include the TelemetryData if the association exists
+    if (hasAssociation) {
+      query.include = [
+        {
+          model: TelemetryData,
+          as: 'TelemetryData'
+        }
+      ];
+    }
+    
+    return await Sensor.findAll(query);
+  } catch (error) {
+    // Log the error and return an empty array instead of throwing
+    console.error('Error in getAllSensors service:', error.message);
+    return [];
+  }
 };
 
 // Get a single sensor by ID

@@ -6,6 +6,9 @@ const sensorRoutes = require('./sensorRoutes');
 const telemetryRoutes = require('./telemetryRoutes');
 const dataStreamRoutes = require('./dataStreamRoutes');
 const authRoutes = require('./authRoutes');
+const roleRoutes = require('./roleRoutes');
+const permissionRoutes = require('./permissionRoutes');
+const userRoleRoutes = require('./userRoleRoutes');
 const sequelize = require('../config/database');
 
 const router = express.Router();
@@ -537,6 +540,9 @@ router.use('/areas', areaRoutes);
 router.use('/sensors', sensorRoutes);
 router.use('/telemetry', telemetryRoutes);
 router.use('/datastreams', dataStreamRoutes);
+router.use('/roles', roleRoutes);
+router.use('/permissions', permissionRoutes);
+router.use('/user-roles', userRoleRoutes);
 
 // Handle undefined routes
 router.all('*', (req, res) => {

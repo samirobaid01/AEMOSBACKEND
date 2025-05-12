@@ -3,6 +3,8 @@ const Device = require('./Device');
 const Organization = require('./Organization');
 const User = require('./User');
 const Role = require('./Role');
+const Permission = require('./Permission');
+const RolePermission = require('./RolePermission');
 const Area = require('./Area');
 const Sensor = require('./Sensor');
 const AreaDevice = require('./AreaDevice');
@@ -23,11 +25,18 @@ const initAssociations = () => {
   Organization.hasMany(Notification, { foreignKey: 'organizationId' });
   Organization.hasMany(PaymentCard, { foreignKey: 'organizationId' });
   Organization.hasMany(RuleChain, { foreignKey: 'organizationId' });
+  Organization.hasMany(Role, { foreignKey: 'organizationId' });
   
   // User associations
   User.hasMany(Ticket, { foreignKey: 'assignedTo' });
 
-  // Role associations are defined in OrganizationUser model
+  // Role associations 
+  Role.belongsTo(Organization, { foreignKey: 'organizationId' });
+  Role.belongsToMany(Permission, { through: RolePermission, foreignKey: 'roleId' });
+  Role.hasMany(OrganizationUser, { foreignKey: 'role' });
+  
+  // Permission associations
+  Permission.belongsToMany(Role, { through: RolePermission, foreignKey: 'permissionId' });
   
   // Area associations
   Area.belongsTo(Organization, { foreignKey: 'organizationId' });
@@ -49,7 +58,6 @@ const initAssociations = () => {
   // OrganizationUser associations
   User.belongsToMany(Organization, { through: OrganizationUser, foreignKey: 'userId' });
   Organization.belongsToMany(User, { through: OrganizationUser, foreignKey: 'organizationId' });
-  Role.hasMany(OrganizationUser, { foreignKey: 'role' });
   OrganizationUser.belongsTo(Role, { foreignKey: 'role' });
   
   // PaymentCard associations
@@ -93,6 +101,8 @@ module.exports = {
   Organization,
   User,
   Role,
+  Permission,
+  RolePermission,
   Area,
   Sensor,
   AreaDevice,

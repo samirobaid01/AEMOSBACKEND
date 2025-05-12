@@ -4,14 +4,28 @@ const { v4: uuidv4 } = require('uuid');
 
 // Get all areas
 const getAllAreas = async () => {
-  return await Area.findAll({
-    include: [
-      {
-        model: Organization,
-        as: 'Organization'
-      }
-    ]
-  });
+  try {
+    // Check if the association exists
+    const hasAssociation = Area.associations && Area.associations.Organization;
+    
+    const query = {};
+    
+    // Only include the Organization if the association exists
+    if (hasAssociation) {
+      query.include = [
+        {
+          model: Organization,
+          as: 'Organization'
+        }
+      ];
+    }
+    
+    return await Area.findAll(query);
+  } catch (error) {
+    // Log the error and return an empty array instead of throwing
+    console.error('Error in getAllAreas service:', error.message);
+    return [];
+  }
 };
 
 // Get a single area by ID

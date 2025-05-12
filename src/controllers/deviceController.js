@@ -4,7 +4,17 @@ const { ApiError } = require('../middlewares/errorHandler');
 // Get all devices
 const getAllDevices = async (req, res, next) => {
   try {
+    // Log that we're about to query devices
+    console.log('Querying all devices');
+    
+    // Add debugging information
+    console.log('User:', req.user);
+    
     const devices = await deviceService.getAllDevices();
+    
+    // Log success
+    console.log(`Retrieved ${devices.length} devices`);
+    
     res.status(200).json({
       status: 'success',
       results: devices.length,
@@ -13,6 +23,9 @@ const getAllDevices = async (req, res, next) => {
       }
     });
   } catch (error) {
+    // Enhanced error logging
+    console.error('Error in getAllDevices:', error.message);
+    console.error(error.stack);
     next(error);
   }
 };

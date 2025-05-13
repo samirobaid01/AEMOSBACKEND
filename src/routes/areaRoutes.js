@@ -2,7 +2,7 @@ const express = require('express');
 const areaController = require('../controllers/areaController');
 const validate = require('../middlewares/validate');
 const { authenticate } = require('../middlewares/auth');
-const { checkPermission, checkResourceOwnership } = require('../middlewares/permission');
+const { checkPermission, checkResourceOwnership, checkOrgPermission } = require('../middlewares/permission');
 const { getAreaForOwnershipCheck } = require('../services/areaService');
 const areaSchema = require('../validators/areaValidators');
 
@@ -11,7 +11,12 @@ const router = express.Router();
 // Routes
 router
   .route('/')
-  .get(authenticate, checkPermission('area.view'), areaController.getAllAreas)
+  .get(
+    authenticate, 
+    validate(areaSchema.query, { query: true }),
+    checkPermission('area.view'), 
+    areaController.getAllAreas
+  )
   .post(
     authenticate, 
     validate(areaSchema.create), 
@@ -23,6 +28,7 @@ router
   .route('/:id')
   .get(
     authenticate, 
+    validate(areaSchema.query, { query: true }),
     checkPermission('area.view'),
     checkResourceOwnership(getAreaForOwnershipCheck),
     areaController.getAreaById
@@ -36,6 +42,7 @@ router
   )
   .delete(
     authenticate, 
+    validate(areaSchema.query, { query: true }),
     checkPermission('area.delete'),
     checkResourceOwnership(getAreaForOwnershipCheck),
     areaController.deleteArea
@@ -45,7 +52,7 @@ router
 router.get(
   '/organization/:organizationId', 
   authenticate, 
-  checkPermission('area.view'), 
+  checkOrgPermission('area.view', true, 'organizationId'), 
   areaController.getAreasByOrganization
 );
 

@@ -6,13 +6,18 @@ const sensorSchema = {
     name: Joi.string().max(50).required(),
     description: Joi.string().allow('', null),
     status: Joi.boolean().default(true),
-    uuid: Joi.string().uuid().allow('', null)
+    uuid: Joi.string().uuid().allow('', null),
+    organizationId: Joi.number().integer().required()
   }),
   update: Joi.object({
     name: Joi.string().max(50),
     description: Joi.string().allow('', null),
     status: Joi.boolean(),
-    uuid: Joi.string().uuid().allow('', null)
+    uuid: Joi.string().uuid().allow('', null),
+    organizationId: Joi.number().integer().required()
+  }),
+  query: Joi.object({
+    organizationId: Joi.number().integer().required()
   })
 };
 

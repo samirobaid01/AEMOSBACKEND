@@ -75,27 +75,27 @@ describe('Supervisor RBAC Tests', () => {
   
   // Test for device and sensor viewing permissions
   describe('View Permissions', () => {
-    it('should allow Supervisor to view devices', async () => {
+    it('should allow Supervisor to view devices in their organization', async () => {
       const response = await request(app)
-        .get('/api/v1/devices')
+        .get(`/api/v1/devices?organizationId=${testOrg.id}`)
         .set('Authorization', `Bearer ${authToken}`);
       
       expect(response.status).toBe(200);
       expect(response.body.status).toBe('success');
     });
     
-    it('should allow Supervisor to view sensors', async () => {
+    it('should allow Supervisor to view sensors in their organization', async () => {
       const response = await request(app)
-        .get('/api/v1/sensors')
+        .get(`/api/v1/sensors?organizationId=${testOrg.id}`)
         .set('Authorization', `Bearer ${authToken}`);
       
       expect(response.status).toBe(200);
       expect(response.body.status).toBe('success');
     });
     
-    it('should allow Supervisor to view areas', async () => {
+    it('should allow Supervisor to view areas in their organization', async () => {
       const response = await request(app)
-        .get('/api/v1/areas')
+        .get(`/api/v1/areas/organization/${testOrg.id}`)
         .set('Authorization', `Bearer ${authToken}`);
       
       expect(response.status).toBe(200);
@@ -120,7 +120,8 @@ describe('Supervisor RBAC Tests', () => {
       const newSensorData = {
         name: 'New Test Sensor',
         description: 'Test sensor that should not be created',
-        status: true
+        status: true,
+        organizationId: testOrg.id
       };
       
       const response = await request(app)
@@ -134,7 +135,8 @@ describe('Supervisor RBAC Tests', () => {
     
     it('should NOT allow Supervisor to update organization details', async () => {
       const updateData = {
-        detail: 'This update should fail'
+        detail: 'This update should fail',
+        organizationId: testOrg.id
       };
       
       const response = await request(app)

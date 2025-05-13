@@ -75,27 +75,27 @@ describe('Viewer RBAC Tests', () => {
   
   // Test for view permissions
   describe('View Permissions', () => {
-    it('should allow Viewer to view devices', async () => {
+    it('should allow Viewer to view devices in their organization', async () => {
       const response = await request(app)
-        .get('/api/v1/devices')
+        .get(`/api/v1/devices?organizationId=${testOrg.id}`)
         .set('Authorization', `Bearer ${authToken}`);
       
       expect(response.status).toBe(200);
       expect(response.body.status).toBe('success');
     });
     
-    it('should allow Viewer to view sensors', async () => {
+    it('should allow Viewer to view sensors in their organization', async () => {
       const response = await request(app)
-        .get('/api/v1/sensors')
+        .get(`/api/v1/sensors?organizationId=${testOrg.id}`)
         .set('Authorization', `Bearer ${authToken}`);
       
       expect(response.status).toBe(200);
       expect(response.body.status).toBe('success');
     });
     
-    it('should allow Viewer to view areas', async () => {
+    it('should allow Viewer to view areas in their organization', async () => {
       const response = await request(app)
-        .get('/api/v1/areas')
+        .get(`/api/v1/areas/organization/${testOrg.id}`)
         .set('Authorization', `Bearer ${authToken}`);
       
       expect(response.status).toBe(200);
@@ -109,7 +109,8 @@ describe('Viewer RBAC Tests', () => {
       const newDeviceData = {
         name: 'New Test Device',
         description: 'Test device that should not be created',
-        status: true
+        status: true,
+        organizationId: testOrg.id
       };
       
       const response = await request(app)
@@ -123,7 +124,8 @@ describe('Viewer RBAC Tests', () => {
     
     it('should NOT allow Viewer to update a sensor', async () => {
       const updateData = {
-        description: 'This update should fail'
+        description: 'This update should fail',
+        organizationId: testOrg.id
       };
       
       const response = await request(app)
@@ -137,7 +139,7 @@ describe('Viewer RBAC Tests', () => {
     
     it('should NOT allow Viewer to delete an area', async () => {
       const response = await request(app)
-        .delete(`/api/v1/areas/${testArea.id}`)
+        .delete(`/api/v1/areas/${testArea.id}?organizationId=${testOrg.id}`)
         .set('Authorization', `Bearer ${authToken}`);
       
       // Expect a 403 Forbidden status

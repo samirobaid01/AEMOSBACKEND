@@ -60,7 +60,7 @@ describe('Organization Admin RBAC Tests', () => {
   describe('Organization Management', () => {
     it('should allow Org Admin to view organization details', async () => {
       const response = await request(app)
-        .get(`/api/v1/organizations/${testOrg.id}`)
+        .get(`/api/v1/organizations/${testOrg.id}?organizationId=${testOrg.id}`)
         .set('Authorization', `Bearer ${authToken}`);
       
       expect(response.status).toBe(200);
@@ -70,7 +70,8 @@ describe('Organization Admin RBAC Tests', () => {
     
     it('should allow Org Admin to update organization details', async () => {
       const updateData = {
-        detail: 'Updated by Org Admin test'
+        detail: 'Updated by Org Admin test',
+        organizationId: testOrg.id
       };
       
       const response = await request(app)
@@ -138,9 +139,9 @@ describe('Organization Admin RBAC Tests', () => {
   describe('User Management', () => {
     it('should allow Org Admin to view users in their organization', async () => {
       // This would typically be a GET request to /organizations/:orgId/users
-      // Implement according to your actual API
+      // But for now, we'll test with the organization endpoint which requires organizationId
       const response = await request(app)
-        .get(`/api/v1/organizations/${testOrg.id}`)
+        .get(`/api/v1/organizations/${testOrg.id}?organizationId=${testOrg.id}`)
         .set('Authorization', `Bearer ${authToken}`);
       
       expect(response.status).toBe(200);

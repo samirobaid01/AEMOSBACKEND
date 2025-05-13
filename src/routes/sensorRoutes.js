@@ -11,13 +11,24 @@ const router = express.Router();
 // Sensor routes
 router
   .route('/')
-  .get(authenticate, checkPermission('sensor.view'), sensorController.getAllSensors)
-  .post(authenticate, validate(sensorSchema.create), checkPermission('sensor.create'), sensorController.createSensor);
+  .get(
+    authenticate, 
+    validate(sensorSchema.query, { query: true }),
+    checkPermission('sensor.view'), 
+    sensorController.getAllSensors
+  )
+  .post(
+    authenticate, 
+    validate(sensorSchema.create), 
+    checkPermission('sensor.create'), 
+    sensorController.createSensor
+  );
 
 router
   .route('/:id')
   .get(
     authenticate, 
+    validate(sensorSchema.query, { query: true }),
     checkPermission('sensor.view'),
     checkResourceOwnership(getSensorForOwnershipCheck),
     sensorController.getSensorById
@@ -31,6 +42,7 @@ router
   )
   .delete(
     authenticate, 
+    validate(sensorSchema.query, { query: true }),
     checkPermission('sensor.delete'),
     checkResourceOwnership(getSensorForOwnershipCheck),
     sensorController.deleteSensor

@@ -149,37 +149,47 @@ router.get('/insomnia', localhostOnly, (req, res) => {
       { 
         method: 'GET', 
         path: '/organizations/:id', 
-        description: 'Get organization by ID (requires organization ownership or System Admin)', 
+        description: 'Get organization by ID (requires organization ownership)', 
         auth: true,
-        permissions: ['organization.view']
+        permissions: ['organization.view'],
+        query: {
+          organizationId: "same as :id parameter"
+        }
       },
       { 
         method: 'PATCH', 
         path: '/organizations/:id', 
-        description: 'Update organization (requires organization ownership or System Admin)', 
+        description: 'Update organization (requires organization ownership)', 
         auth: true,
         permissions: ['organization.update'],
         params: {
           name: "Updated Organization Name",
           status: true,
-          detail: "Updated details"
+          detail: "Updated details",
+          organizationId: "same as :id parameter"
         }
       },
       { 
         method: 'DELETE', 
         path: '/organizations/:id', 
-        description: 'Delete organization (requires organization ownership or System Admin)', 
+        description: 'Delete organization (requires organization ownership)', 
         auth: true,
-        permissions: ['organization.delete']
+        permissions: ['organization.delete'],
+        query: {
+          organizationId: "same as :id parameter"
+        }
       },
     ],
     areas: [
       { 
         method: 'GET', 
         path: '/areas', 
-        description: 'Get all areas (filtered by user organization for non-System Admins)', 
+        description: 'Get all areas filtered by organization', 
         auth: true,
-        permissions: ['area.view']
+        permissions: ['area.view'],
+        query: {
+          organizationId: 1
+        }
       },
       { 
         method: 'POST', 
@@ -190,40 +200,48 @@ router.get('/insomnia', localhostOnly, (req, res) => {
         params: {
           name: "Area Name",
           organizationId: 1,
-          description: "Area description",
-          status: true
+          parentArea: null,
+          image: "example-image-url",
+          uuid: "550e8400-e29b-41d4-a716-446655440000"
         }
       },
       { 
         method: 'GET', 
         path: '/areas/:id', 
-        description: 'Get area by ID (requires organization ownership or System Admin)', 
+        description: 'Get area by ID (requires organization ownership)', 
         auth: true,
-        permissions: ['area.view']
+        permissions: ['area.view'],
+        query: {
+          organizationId: 1
+        }
       },
       { 
         method: 'PATCH', 
         path: '/areas/:id', 
-        description: 'Update area (requires organization ownership or System Admin)', 
+        description: 'Update area (requires organization ownership)', 
         auth: true,
         permissions: ['area.update'],
         params: {
           name: "Updated Area Name",
-          description: "Updated description",
-          status: true
+          organizationId: 1,
+          parentArea: null,
+          image: "updated-image-url"
         }
       },
       { 
         method: 'DELETE', 
         path: '/areas/:id', 
-        description: 'Delete area (requires organization ownership or System Admin)', 
+        description: 'Delete area (requires organization ownership)', 
         auth: true,
-        permissions: ['area.delete']
+        permissions: ['area.delete'],
+        query: {
+          organizationId: 1
+        }
       },
       { 
         method: 'GET', 
         path: '/areas/organization/:organizationId', 
-        description: 'Get areas by organization', 
+        description: 'Get areas by organization (validates organization access)', 
         auth: true,
         permissions: ['area.view']
       },
@@ -232,9 +250,13 @@ router.get('/insomnia', localhostOnly, (req, res) => {
       { 
         method: 'GET', 
         path: '/sensors', 
-        description: 'Get all sensors (filtered by user organization for non-System Admins)', 
+        description: 'Get all sensors for a specific organization', 
         auth: true,
-        permissions: ['sensor.view']
+        permissions: ['sensor.view'],
+        params: null,
+        query: {
+          organizationId: 1
+        }
       },
       { 
         method: 'POST', 
@@ -244,42 +266,44 @@ router.get('/insomnia', localhostOnly, (req, res) => {
         permissions: ['sensor.create'],
         params: {
           name: "Sensor Name",
-          areaId: 1,
-          type: "Temperature",
-          status: true,
           description: "Sensor description",
-          metadata: {
-            range: "-40C to 80C",
-            precision: "0.1C"
-          }
+          status: true,
+          uuid: "550e8400-e29b-41d4-a716-446655440000",
+          organizationId: 1
         }
       },
       { 
         method: 'GET', 
         path: '/sensors/:id', 
-        description: 'Get sensor by ID (requires organization ownership or System Admin)', 
+        description: 'Get sensor by ID (requires organization ownership)', 
         auth: true,
-        permissions: ['sensor.view']
+        permissions: ['sensor.view'],
+        query: {
+          organizationId: 1
+        }
       },
       { 
         method: 'PATCH', 
         path: '/sensors/:id', 
-        description: 'Update sensor (requires organization ownership or System Admin)', 
+        description: 'Update sensor (requires organization ownership)', 
         auth: true,
         permissions: ['sensor.update'],
         params: {
           name: "Updated Sensor Name",
-          type: "Temperature",
+          description: "Updated description",
           status: true,
-          description: "Updated description"
+          organizationId: 1
         }
       },
       { 
         method: 'DELETE', 
         path: '/sensors/:id', 
-        description: 'Delete sensor (requires organization ownership or System Admin)', 
+        description: 'Delete sensor (requires organization ownership)', 
         auth: true,
-        permissions: ['sensor.delete']
+        permissions: ['sensor.delete'],
+        query: {
+          organizationId: 1
+        }
       },
     ],
     telemetry: [

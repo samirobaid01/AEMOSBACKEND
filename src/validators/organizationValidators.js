@@ -16,6 +16,7 @@ const organizationSchema = {
     contactNumber: Joi.string().max(50).allow('', null)
   }),
   update: Joi.object({
+    organizationId: Joi.number().integer().required(),
     parentId: Joi.number().integer().allow(null),
     name: Joi.string().max(50),
     status: Joi.boolean(),
@@ -27,6 +28,9 @@ const organizationSchema = {
     email: Joi.string().email().allow('', null),
     isParent: Joi.boolean(),
     contactNumber: Joi.string().max(50).allow('', null)
+  }),
+  query: Joi.object({
+    organizationId: Joi.number().integer().required()
   })
 };
 

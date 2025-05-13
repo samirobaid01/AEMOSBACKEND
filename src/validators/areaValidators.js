@@ -11,10 +11,13 @@ const areaSchema = {
   }),
   update: Joi.object({
     name: Joi.string().max(50),
-    organizationId: Joi.number().integer(),
+    organizationId: Joi.number().integer().required(),
     parentArea: Joi.number().integer().allow(null),
     image: Joi.string().allow('', null),
     uuid: Joi.string().uuid().allow('', null)
+  }),
+  query: Joi.object({
+    organizationId: Joi.number().integer().required()
   })
 };
 

@@ -119,7 +119,7 @@ const checkResourceOwnership = (resourceFetcher, idParam = 'id') => {
         throw new ApiError(400, `Resource ID (${idParam}) is required`);
       }
 
-      console.log(`Checking ownership for resource ${idParam}=${resourceId} in organization ${organizationId} by user ${req.user.id}`);
+      console.log(`Checking ownership for resource id=${resourceId} in organization ${organizationId} by user ${req.user.id}`);
 
       // Check if user is a System Admin - they can access all resources
       try {
@@ -142,7 +142,7 @@ const checkResourceOwnership = (resourceFetcher, idParam = 'id') => {
       try {
         console.log(`Checking if user ${req.user.id} belongs to organization ${organizationId}`);
         userOrgs = await getUserOrganizations(req.user.id);
-        console.log(`User organizations:`, userOrgs.map(org => org.id));
+        console.log(`User organizations: ${userOrgs.map(org => org.id)}`);
         
         userBelongsToOrg = userOrgs.some(org => org.id === Number(organizationId));
         console.log(`User belongs to organization ${organizationId}: ${userBelongsToOrg}`);
@@ -185,42 +185,64 @@ const checkResourceOwnership = (resourceFetcher, idParam = 'id') => {
 
       // Get resource and verify it belongs to the organization
       let resource = null;
+      let resourceBelongsToOrg = false;
+      
       try {
-        console.log(`Fetching resource ${idParam}=${resourceId} to verify organization ownership`);
+        console.log(`Fetching resource id=${resourceId} to verify organization ownership`);
         resource = await resourceFetcher(resourceId);
+        
+        if (!resource) {
+          console.log(`Resource id=${resourceId} not found`);
+          throw new ApiError(404, 'Resource not found');
+        }
+        
+        console.log(`Checking if resource id=${resourceId} belongs to organization ${organizationId}`);
+        console.log(`Resource organization ID: ${resource.organizationId}`);
+        
+        // For resources with null organizationId (like Sensors that access organization via Area)
+        // We need to verify the relationship using specialized logic
+        if (resource.organizationId === null) {
+          console.warn(`WARNING: Resource id=${resourceId} has no organizationId. Additional check required.`);
+          
+          // Check if the resource fetcher has a specialized resourceBelongsToOrganization function
+          if (resourceFetcher.resourceBelongsToOrganization) {
+            try {
+              resourceBelongsToOrg = await resourceFetcher.resourceBelongsToOrganization(resourceId, organizationId);
+              console.log(`Resource ${resourceId} belongs to organization ${organizationId}: ${resourceBelongsToOrg}`);
+              
+              if (!resourceBelongsToOrg) {
+                console.log(`Cross-organization access denied: Resource id=${resourceId} does not belong to organization ${organizationId}`);
+                throw new ApiError(403, 'Forbidden: Resource does not belong to the specified organization');
+              }
+              
+              // Set the organization ID for later use
+              req.resourceOrganizationId = Number(organizationId);
+              console.log(`Access granted: Resource ${resourceId} confirmed to belong to organization ${organizationId}`);
+              return next();
+            } catch (error) {
+              console.error(`Error in specialized ownership check: ${error.message}`);
+              throw new ApiError(403, 'Forbidden: Cannot verify resource organization ownership');
+            }
+          }
+        } else {
+          // If the resource has a direct organizationId, simply compare it
+          if (resource.organizationId !== Number(organizationId)) {
+            console.log(`Organization mismatch: Resource belongs to ${resource.organizationId}, but user is accessing via ${organizationId}`);
+            throw new ApiError(403, 'Forbidden: Resource does not belong to the specified organization');
+          }
+        }
       } catch (error) {
-        console.error(`Error fetching resource:`, error.message);
-        throw new ApiError(500, 'Error fetching resource data');
-      }
-      
-      if (!resource) {
-        console.log(`Resource ${idParam}=${resourceId} not found`);
-        throw new ApiError(404, 'Resource not found');
-      }
-
-      // Verify resource belongs to the specified organization
-      console.log(`Checking if resource ${idParam}=${resourceId} belongs to organization ${organizationId}`);
-      console.log(`Resource organization ID:`, resource.organizationId);
-      
-      if (resource.organizationId === null) {
-        console.warn(`WARNING: Resource ${idParam}=${resourceId} has no organizationId. Additional check required.`);
-        // For resources without direct organizationId, we've already verified the user's access
-        // through the previous userBelongsToOrg check. The resourceFetcher should have verified
-        // the resource's organization through relationships (like Device->Area->Organization)
-        req.resourceOrganizationId = organizationId;
-        return next();
-      }
-      
-      // Verify resource's organization matches the requested organization
-      if (resource.organizationId !== Number(organizationId)) {
-        console.log(`Organization mismatch: Resource belongs to ${resource.organizationId}, but user is accessing via ${organizationId}`);
-        throw new ApiError(403, 'Forbidden: Resource does not belong to the specified organization');
+        if (error instanceof ApiError) {
+          throw error; // Re-throw ApiErrors that we created
+        }
+        console.error(`Error verifying resource ownership:`, error.message);
+        throw new ApiError(500, 'Error verifying resource ownership');
       }
 
       // Store the organization ID for later use
       req.resourceOrganizationId = Number(organizationId);
       
-      console.log(`Access granted to resource ${idParam}=${resourceId} for user ${req.user.id}`);
+      console.log(`Access granted to resource id=${resourceId} for user ${req.user.id}`);
       next();
     } catch (error) {
       console.error('Error in checkResourceOwnership:', error);

@@ -2,8 +2,9 @@ const express = require('express');
 const organizationController = require('../controllers/organizationController');
 const validate = require('../middlewares/validate');
 const { authenticate } = require('../middlewares/auth');
-const { checkPermission } = require('../middlewares/permission');
+const { checkPermission, checkResourceOwnership, checkOrgPermission } = require('../middlewares/permission');
 const organizationSchema = require('../validators/organizationValidators');
+const { getOrganizationForOwnershipCheck } = require('../services/organizationService');
 
 const router = express.Router();
 
@@ -11,12 +12,35 @@ const router = express.Router();
 router
   .route('/')
   .get(authenticate, checkPermission('organization.view'), organizationController.getAllOrganizations)
-  .post(authenticate, validate(organizationSchema.create), checkPermission('organization.update'), organizationController.createOrganization);
+  .post(
+    authenticate, 
+    validate(organizationSchema.create), 
+    checkPermission('organization.create'), 
+    organizationController.createOrganization
+  );
 
 router
   .route('/:id')
-  .get(authenticate, checkPermission('organization.view'), organizationController.getOrganizationById)
-  .patch(authenticate, validate(organizationSchema.update), checkPermission('organization.update'), organizationController.updateOrganization)
-  .delete(authenticate, checkPermission('organization.update'), organizationController.deleteOrganization);
+  .get(
+    authenticate, 
+    validate(organizationSchema.query, { query: true }),
+    checkPermission('organization.view'),
+    checkResourceOwnership(getOrganizationForOwnershipCheck),
+    organizationController.getOrganizationById
+  )
+  .patch(
+    authenticate, 
+    validate(organizationSchema.update), 
+    checkPermission('organization.update'),
+    checkResourceOwnership(getOrganizationForOwnershipCheck),
+    organizationController.updateOrganization
+  )
+  .delete(
+    authenticate, 
+    validate(organizationSchema.query, { query: true }),
+    checkPermission('organization.delete'),
+    checkResourceOwnership(getOrganizationForOwnershipCheck),
+    organizationController.deleteOrganization
+  );
 
 module.exports = router; 

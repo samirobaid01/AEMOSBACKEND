@@ -30,23 +30,41 @@ const getAllAreas = async () => {
 
 // Get a single area by ID
 const getAreaById = async (id) => {
-  return await Area.findByPk(id, {
-    include: [
-      {
-        model: Organization,
-        as: 'Organization'
-      }
-    ]
-  });
+  try {
+    // Check if the association exists
+    const hasAssociation = Area.associations && Area.associations.Organization;
+    
+    const query = {};
+    
+    // Only include the Organization if the association exists
+    if (hasAssociation) {
+      query.include = [
+        {
+          model: Organization,
+          as: 'Organization'
+        }
+      ];
+    }
+    
+    return await Area.findByPk(id, query);
+  } catch (error) {
+    console.error('Error in getAreaById service:', error.message);
+    throw new ApiError(500, 'Unable to fetch area: ' + error.message);
+  }
 };
 
 // Get areas by organization ID
 const getAreasByOrganization = async (organizationId) => {
-  return await Area.findAll({
-    where: {
-      organizationId
-    }
-  });
+  try {
+    return await Area.findAll({
+      where: {
+        organizationId: Number(organizationId)
+      }
+    });
+  } catch (error) {
+    console.error(`Error in getAreasByOrganization: ${error.message}`);
+    return [];
+  }
 };
 
 // Create a new area
@@ -90,13 +108,43 @@ const deleteArea = async (id) => {
  */
 const getAreaForOwnershipCheck = async (id) => {
   try {
-    return await Area.findByPk(id, {
+    const area = await Area.findByPk(id, {
       attributes: ['id', 'organizationId'],
       raw: true
     });
+    
+    if (!area) {
+      console.log(`Area with ID ${id} not found!`);
+      return null;
+    }
+    
+    return {
+      id: area.id,
+      organizationId: Number(area.organizationId)
+    };
   } catch (error) {
     console.error('Error in getAreaForOwnershipCheck:', error.message);
     return null;
+  }
+};
+
+/**
+ * Check if an area belongs to a specific organization
+ * @param {Number} areaId - Area ID
+ * @param {Number} organizationId - Organization ID
+ * @returns {Promise<Boolean>} True if area belongs to organization
+ */
+const areaBelongsToOrganization = async (areaId, organizationId) => {
+  try {
+    const area = await getAreaForOwnershipCheck(areaId);
+    if (!area) {
+      return false;
+    }
+    
+    return area.organizationId === Number(organizationId);
+  } catch (error) {
+    console.error(`Error in areaBelongsToOrganization: ${error.message}`);
+    return false;
   }
 };
 
@@ -107,5 +155,6 @@ module.exports = {
   createArea,
   updateArea,
   deleteArea,
-  getAreaForOwnershipCheck
+  getAreaForOwnershipCheck,
+  areaBelongsToOrganization
 }; 

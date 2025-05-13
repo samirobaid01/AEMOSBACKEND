@@ -4,34 +4,49 @@ const roleService = require('../services/roleService');
 
 // SENSOR ENDPOINTS
 
-// Get all sensors
+// Get all sensors, filtered by organization
 const getAllSensors = async (req, res, next) => {
   try {
+    // Get organization ID from query
+    const { organizationId } = req.query;
+    console.log(`Getting all sensors for organization: ${organizationId}`);
+    
     // Check if user is a System Admin
     const isSystemAdmin = await roleService.userIsSystemAdmin(req.user.id);
     
     let sensors;
     
-    // If System Admin, get all sensors
+    // If System Admin, get all sensors from the specified organization
     if (isSystemAdmin) {
-      sensors = await sensorService.getAllSensors();
+      console.log(`User is System Admin, getting all sensors for org ${organizationId}`);
+      sensors = await sensorService.getSensorsByOrganizations([organizationId]);
     } else {
-      // Get user's organizations
+      // Verify user has access to this organization
       const userOrgs = await roleService.getUserOrganizations(req.user.id);
       const orgIds = userOrgs.map(org => org.id);
       
-      // Get sensors for user's organizations only
-      sensors = await sensorService.getSensorsByOrganizations(orgIds);
+      if (!orgIds.includes(Number(organizationId))) {
+        console.log(`User ${req.user.id} does not have access to organization ${organizationId}`);
+        return next(new ApiError(403, 'Forbidden: You do not have access to this organization'));
+      }
+      
+      // Get sensors for the specified organization
+      console.log(`Getting sensors for organization ${organizationId} for user ${req.user.id}`);
+      sensors = await sensorService.getSensorsByOrganizations([organizationId]);
     }
+    
+    // Log success
+    console.log(`Retrieved ${sensors.length} sensors for organization ${organizationId}`);
     
     res.status(200).json({
       status: 'success',
       results: sensors.length,
-      data: {
-        sensors
-      }
+      data: { sensors }
     });
   } catch (error) {
+    // Enhanced error logging
+    console.error('Error in getAllSensors:', error.message);
+    console.error(error.stack);
     next(error);
   }
 };
@@ -40,19 +55,27 @@ const getAllSensors = async (req, res, next) => {
 const getSensorById = async (req, res, next) => {
   try {
     const { id } = req.params;
+    const { organizationId } = req.query;
+    console.log(`Getting sensor by ID: ${id} for organization: ${organizationId}`);
+    
+    // Get the sensor
     const sensor = await sensorService.getSensorById(id);
-
+    
     if (!sensor) {
+      console.log(`Sensor with ID ${id} not found in controller`);
       return next(new ApiError(404, `Sensor with ID ${id} not found`));
     }
-
+    
+    // Note: Organization check is handled by the checkResourceOwnership middleware
+    // We've already verified the sensor belongs to the organization at this point
+    
+    console.log(`Successfully found sensor: ${sensor.name}`);
     res.status(200).json({
       status: 'success',
-      data: {
-        sensor,
-      },
+      data: { sensor }
     });
   } catch (error) {
+    console.error(`Error in getSensorById:`, error);
     next(error);
   }
 };
@@ -60,15 +83,33 @@ const getSensorById = async (req, res, next) => {
 // Create a new sensor
 const createSensor = async (req, res, next) => {
   try {
-    const sensor = await sensorService.createSensor(req.body);
-
+    const sensorData = req.body;
+    const { organizationId, areaId } = req.body;
+    
+    console.log(`Creating sensor for organization: ${organizationId}`);
+    
+    // Create the sensor
+    const sensor = await sensorService.createSensor(sensorData);
+    
+    // Create area-sensor association if areaId is provided
+    if (areaId) {
+      try {
+        await sensorService.associateSensorWithArea(sensor.id, areaId);
+        console.log(`Associated sensor ${sensor.id} with area ${areaId}`);
+      } catch (assocError) {
+        console.error(`Error associating sensor with area: ${assocError.message}`);
+        // Continue even if association fails - the sensor was created
+      }
+    } else {
+      console.warn(`No areaId provided for sensor ${sensor.id}. It won't be associated with any organization until assigned to an area.`);
+    }
+    
     res.status(201).json({
       status: 'success',
-      data: {
-        sensor,
-      },
+      data: { sensor }
     });
   } catch (error) {
+    console.error(`Error in createSensor:`, error);
     next(error);
   }
 };
@@ -77,19 +118,24 @@ const createSensor = async (req, res, next) => {
 const updateSensor = async (req, res, next) => {
   try {
     const { id } = req.params;
+    const { organizationId } = req.body;
+    
+    console.log(`Updating sensor ${id} for organization: ${organizationId}`);
+    
+    // Note: Organization check is handled by the checkResourceOwnership middleware
+    
     const sensor = await sensorService.updateSensor(id, req.body);
-
+    
     if (!sensor) {
       return next(new ApiError(404, `Sensor with ID ${id} not found`));
     }
-
+    
     res.status(200).json({
       status: 'success',
-      data: {
-        sensor,
-      },
+      data: { sensor }
     });
   } catch (error) {
+    console.error(`Error in updateSensor:`, error);
     next(error);
   }
 };
@@ -98,17 +144,24 @@ const updateSensor = async (req, res, next) => {
 const deleteSensor = async (req, res, next) => {
   try {
     const { id } = req.params;
+    const { organizationId } = req.query;
+    
+    console.log(`Deleting sensor ${id} for organization: ${organizationId}`);
+    
+    // Note: Organization check is handled by the checkResourceOwnership middleware
+    
     const result = await sensorService.deleteSensor(id);
-
+    
     if (!result) {
       return next(new ApiError(404, `Sensor with ID ${id} not found`));
     }
-
+    
     res.status(204).json({
       status: 'success',
-      data: null,
+      data: null
     });
   } catch (error) {
+    console.error(`Error in deleteSensor:`, error);
     next(error);
   }
 };

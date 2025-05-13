@@ -4,6 +4,7 @@ const validate = require('../middlewares/validate');
 const { authenticate } = require('../middlewares/auth');
 const { checkPermission, checkResourceOwnership, checkOrgPermission } = require('../middlewares/permission');
 const { getAreaForOwnershipCheck } = require('../services/areaService');
+const { attachUserOrganizationsForAreas } = require('../middlewares/areaCheck');
 const areaSchema = require('../validators/areaValidators');
 
 const router = express.Router();
@@ -15,6 +16,7 @@ router
     authenticate, 
     validate(areaSchema.query, { query: true }),
     checkPermission('area.view'), 
+    attachUserOrganizationsForAreas,
     areaController.getAllAreas
   )
   .post(

@@ -5,7 +5,7 @@ const organizationSchema = {
   create: Joi.object({
     parentId: Joi.number().integer().allow(null),
     name: Joi.string().max(50).required(),
-    status: Joi.boolean().default(true),
+    status: Joi.string().valid('active', 'inactive', 'pending', 'suspended', 'archived').default('pending'),
     detail: Joi.string().allow('', null),
     paymentMethods: Joi.string().allow('', null),
     image: Joi.string().allow('', null),
@@ -19,7 +19,7 @@ const organizationSchema = {
     organizationId: Joi.number().integer().required(),
     parentId: Joi.number().integer().allow(null),
     name: Joi.string().max(50),
-    status: Joi.boolean(),
+    status: Joi.string().valid('active', 'inactive', 'pending', 'suspended', 'archived'),
     detail: Joi.string().allow('', null),
     paymentMethods: Joi.string().allow('', null),
     image: Joi.string().allow('', null),

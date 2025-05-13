@@ -14,7 +14,8 @@ const Organization = sequelize.define('Organization', {
     type: DataTypes.STRING(50)
   },
   status: {
-    type: DataTypes.BOOLEAN
+    type: DataTypes.ENUM('active', 'inactive', 'pending', 'suspended', 'archived'),
+    defaultValue: 'pending'
   },
   detail: {
     type: DataTypes.TEXT

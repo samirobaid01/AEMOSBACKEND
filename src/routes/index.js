@@ -62,8 +62,8 @@ router.get('/health/live', (req, res) => {
 
 // Insomnia export endpoint - localhost only
 router.get('/insomnia', localhostOnly, (req, res) => {
-  // Base URL for the API
-  const baseUrl = '/api/v1';
+  // Base URL variable for Insomnia without trailing slash
+  const baseUrlVar = '{{ base_url }}';
   
   const routes = {
     auth: [
@@ -73,8 +73,12 @@ router.get('/insomnia', localhostOnly, (req, res) => {
         description: 'Login and get JWT token', 
         auth: false,
         params: {
-          email: "user@example.com",
-          password: "password123"
+          email: "samiradmin@yopmail.com",
+          password: "1234Abcd"
+        },
+        // Add the response handling script to set the token variable
+        responseBehavior: {
+          setBearerToken: true
         }
       },
       {
@@ -103,7 +107,11 @@ router.get('/insomnia', localhostOnly, (req, res) => {
         auth: false,
         params: {
           refreshToken: "your_refresh_token_here"
-        } 
+        },
+        // Add the response handling script to set the token variable
+        responseBehavior: {
+          setBearerToken: true
+        }
       },
       { 
         method: 'POST', 
@@ -606,7 +614,8 @@ router.get('/insomnia', localhostOnly, (req, res) => {
     _id: envId,
     name: 'Base Environment',
     data: {
-      base_url: baseUrl,
+      // Use URL without trailing slash
+      base_url: "http://localhost:3000/api/v1",
       token: '',
       system_admin_token: '-- System Admin JWT Token --',
       org_admin_token: '-- Org Admin JWT Token --',
@@ -619,6 +628,49 @@ router.get('/insomnia', localhostOnly, (req, res) => {
     modified: Date.now(),
     parentId: workspaceId,
     _type: 'environment'
+  });
+
+  // Add login token handler script
+  const tokenHandlerId = `req_token_handler_${Math.random().toString(36).substring(2, 15)}`;
+  resources.push({
+    _id: tokenHandlerId,
+    parentId: workspaceId,
+    modified: Date.now(),
+    created: Date.now(),
+    url: '',
+    name: '🔑 Token Handler Documentation',
+    description: `# Automatic Token Handling
+
+This collection includes automatic token handling for authentication:
+
+1. When you login with \`POST /auth/login\`, the response token is automatically saved to the environment
+2. The token is then used in all subsequent requests that require authentication
+3. You can switch between different role tokens using the environment variables:
+   - {{ token }}: Current token set from login
+   - {{ system_admin_token }}: For System Admin access
+   - {{ org_admin_token }}: For Organization Admin access
+   - {{ supervisor_token }}: For Supervisor access
+   - {{ viewer_token }}: For Viewer access
+
+## Testing Different Roles
+
+To test different roles, you can:
+
+1. Login as a user with the desired role
+2. The token will be automatically saved
+3. Or manually set one of the predefined role tokens in the environment
+
+## URLs and Environment Variables
+
+All request URLs use the environment variable \`{{ base_url }}\`. You can easily change the base URL in your environment settings to point to different servers (development, staging, production).`,
+    method: 'GET',
+    body: {},
+    parameters: [],
+    headers: [],
+    authentication: {},
+    metaSortKey: -100,
+    isPrivate: false,
+    _type: 'request'
   });
 
   // Add README file
@@ -651,8 +703,8 @@ This API implements role-based access control (RBAC) with organization-based res
 
 ### Using this Collection
 
-1. Use the environment variables to switch between different role tokens:
-   - {{ token }}: Your current token
+1. Login with your credentials to automatically get a token, or use the environment variables to switch between different role tokens:
+   - {{ token }}: Your current token (automatically set from login)
    - {{ system_admin_token }}: For System Admin access
    - {{ org_admin_token }}: For Organization Admin access
    - {{ supervisor_token }}: For Supervisor access
@@ -712,7 +764,7 @@ This API implements role-based access control (RBAC) with organization-based res
       name: 'System Admin: Access Any Device',
       description: `# System Admin Access\n\nThis request demonstrates how a System Admin can access any device across all organizations.\n\n1. Set the 'Authorization' header to use the System Admin token\n2. The System Admin can view any device regardless of organization\n3. No additional checks are needed beyond having the 'device.view' permission`,
       method: 'GET',
-      url: `${baseUrl}/devices/1`,
+      url: `${baseUrlVar}/devices/1`,
       headers: [
         { name: 'Authorization', value: 'Bearer {{ system_admin_token }}' }
       ]
@@ -721,7 +773,7 @@ This API implements role-based access control (RBAC) with organization-based res
       name: 'Org Admin: Access Within Organization',
       description: `# Organization-Based Access\n\nThis request demonstrates how an Org Admin is restricted to devices within their organization.\n\n1. Set the 'Authorization' header to use the Org Admin token\n2. The request will only succeed if Device ID 1 belongs to the Org Admin's organization\n3. If it belongs to another organization, a 403 Forbidden error is returned\n\nThis showcases the organization-based access control mechanism.`,
       method: 'GET',
-      url: `${baseUrl}/devices/1`,
+      url: `${baseUrlVar}/devices/1`,
       headers: [
         { name: 'Authorization', value: 'Bearer {{ org_admin_token }}' }
       ]
@@ -730,7 +782,7 @@ This API implements role-based access control (RBAC) with organization-based res
       name: 'Viewer: Limited Permissions',
       description: `# Permission-Based Access\n\nThis request demonstrates permission-based restrictions for a Viewer role.\n\n1. A Viewer can view devices in their organization (/devices/1) successfully\n2. But attempting to update or delete will fail with 403 Forbidden\n\nThis showcases the permission-based access control aspect of the RBAC system.`,
       method: 'GET',
-      url: `${baseUrl}/devices/1`,
+      url: `${baseUrlVar}/devices/1`,
       headers: [
         { name: 'Authorization', value: 'Bearer {{ viewer_token }}' }
       ]
@@ -784,12 +836,30 @@ This API implements role-based access control (RBAC) with organization-based res
         fullDescription += `\n\nAccess Control:\n- System Admin: Full access to all resources\n- Other roles: Access limited to resources within their organization`;
       }
       
+      // Add automatic token handling for login and refresh token endpoints
+      let testScript = '';
+      
+      if (route.responseBehavior && route.responseBehavior.setBearerToken) {
+        testScript = `
+// Auto-extract and set bearer token from response
+const response = pm.response.json();
+if (response.token) {
+  // Store the token value
+  pm.environment.set('token', response.token);
+  console.log('Token automatically saved: ' + response.token.substring(0, 10) + '...');
+}`;
+      }
+      
+      // Construct the URL correctly by removing leading slash from route path
+      // This prevents issues like "http:///path" when combining with base_url
+      const routePath = route.path.startsWith('/') ? route.path.substring(1) : route.path;
+      
       resources.push({
         _id: requestId,
         parentId: folderIds[category],
         modified: Date.now(),
         created: Date.now(),
-        url: baseUrl + route.path,
+        url: `${baseUrlVar}/${routePath}`,
         name: `${route.method} ${route.path}`,
         description: fullDescription,
         method: route.method,
@@ -806,13 +876,14 @@ This API implements role-based access control (RBAC) with organization-based res
             value: 'application/json',
             description: ''
           },
+          // Explicitly add Authorization header if auth is required
           ...(route.auth ? [{
             name: 'Authorization',
-            value: 'Bearer {{ token }}',
-            description: ''
+            value: 'Bearer {{token}}',
+            description: 'JWT Authentication token'
           }] : [])
         ],
-        authentication: {},
+        authentication: {}, // No built-in authentication, use explicit header
         metaSortKey: (index + 1) * 100,
         isPrivate: false,
         settingStoreCookies: true,
@@ -821,9 +892,26 @@ This API implements role-based access control (RBAC) with organization-based res
         settingEncodeUrl: true,
         settingRebuildPath: true,
         settingFollowRedirects: 'global',
-        _type: 'request'
+        _type: 'request',
+        // Add the test script if it exists
+        ...(testScript ? { 
+          tests: testScript
+        } : {})
       });
     });
+  });
+  
+  // Also fix the example URLs
+  resources.forEach(resource => {
+    if (resource.url && resource.url.includes(baseUrlVar)) {
+      // Extract the path part after baseUrlVar
+      const match = resource.url.match(new RegExp(`${baseUrlVar}(/.+)`));
+      if (match && match[1]) {
+        // Clean up the path to avoid double slashes
+        const path = match[1].startsWith('/') ? match[1].substring(1) : match[1];
+        resource.url = `${baseUrlVar}/${path}`;
+      }
+    }
   });
   
   const insomniaExport = {

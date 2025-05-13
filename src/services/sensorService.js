@@ -2,16 +2,26 @@ const { Sensor, TelemetryData, Area, AreaSensor } = require('../models/initModel
 const { ApiError } = require('../middlewares/errorHandler');
 const { v4: uuidv4 } = require('uuid');
 const sequelize = require('../config/database');
+const { Op } = require('sequelize');
 
 // SENSOR OPERATIONS
 
 // Get all sensors
-const getAllSensors = async () => {
+const getAllSensors = async (includeInactive = false) => {
   try {
     // Check if the association exists
     const hasAssociation = Sensor.associations && Sensor.associations.TelemetryData;
     
     const query = {};
+    
+    // Only include active sensors by default
+    if (!includeInactive) {
+      query.where = {
+        status: {
+          [Op.ne]: 'inactive'
+        }
+      };
+    }
     
     // Only include the TelemetryData if the association exists
     if (hasAssociation) {
@@ -72,6 +82,11 @@ const createSensor = async (sensorData) => {
     sensorData.updatedAt = now;
   }
   
+  // Set default status if not provided
+  if (!sensorData.status) {
+    sensorData.status = 'pending';
+  }
+  
   return await Sensor.create(sensorData);
 };
 
@@ -130,7 +145,11 @@ const deleteSensor = async (id) => {
     return false;
   }
   
-  await sensor.destroy();
+  // Instead of deleting, set status to inactive
+  await sensor.update({
+    status: 'inactive',
+    updatedAt: new Date()
+  });
   return true;
 };
 

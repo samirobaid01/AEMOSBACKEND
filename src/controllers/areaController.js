@@ -4,7 +4,20 @@ const { ApiError } = require('../middlewares/errorHandler');
 // Get all areas
 const getAllAreas = async (req, res, next) => {
   try {
-    const areas = await areaService.getAllAreas();
+    let areas;
+    
+    // If user is a system admin, get all areas
+    if (req.isSystemAdmin) {
+      areas = await areaService.getAllAreas();
+    } else {
+      // Otherwise, filter by the organizations the user belongs to
+      if (req.userOrganizationIds && req.userOrganizationIds.length > 0) {
+        areas = await areaService.getAreasByOrganizationIds(req.userOrganizationIds);
+      } else {
+        areas = [];
+      }
+    }
+    
     res.status(200).json({
       status: 'success',
       results: areas.length,

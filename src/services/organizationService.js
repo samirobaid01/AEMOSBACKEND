@@ -1,15 +1,27 @@
 const { Organization } = require('../models/initModels');
 const { ApiError } = require('../middlewares/errorHandler');
 const { sequelize } = require('../models/initModels');
+const { Op } = require('sequelize');
 
 // Get all organizations
-const getAllOrganizations = async () => {
-  return await Organization.findAll({
+const getAllOrganizations = async (includeInactive = false) => {
+  const query = {
     include: [{
       model: Organization,
       as: 'children'
     }]
-  });
+  };
+  
+  // Only include active organizations by default
+  if (!includeInactive) {
+    query.where = {
+      status: {
+        [Op.notIn]: ['inactive', 'archived']
+      }
+    };
+  }
+  
+  return await Organization.findAll(query);
 };
 
 // Get a single organization by ID
@@ -33,6 +45,11 @@ const createOrganization = async (organizationData) => {
     organizationData.updatedAt = now;
   }
   
+  // Set default status if not provided
+  if (!organizationData.status) {
+    organizationData.status = 'pending';
+  }
+  
   return await Organization.create(organizationData);
 };
 
@@ -51,7 +68,7 @@ const updateOrganization = async (id, organizationData) => {
   return organization;
 };
 
-// Delete an organization
+// Delete an organization (soft delete)
 const deleteOrganization = async (id) => {
   const organization = await Organization.findByPk(id);
   
@@ -59,7 +76,11 @@ const deleteOrganization = async (id) => {
     return false;
   }
   
-  await organization.destroy();
+  // Instead of deleting, set status to inactive
+  await organization.update({
+    status: 'archived',
+    updatedAt: new Date()
+  });
   return true;
 };
 
@@ -111,6 +132,31 @@ const getParentOrganization = async (id) => {
   }
 };
 
+/**
+ * Get organizations by their IDs
+ * @param {Array} ids - Array of organization IDs
+ * @returns {Promise<Array>} Array of organizations
+ */
+const getOrganizationsByIds = async (ids) => {
+  if (!ids || ids.length === 0) {
+    return [];
+  }
+  
+  const query = {
+    where: {
+      id: {
+        [Op.in]: ids
+      }
+    },
+    include: [{
+      model: Organization,
+      as: 'children'
+    }]
+  };
+  
+  return await Organization.findAll(query);
+};
+
 module.exports = {
   getAllOrganizations,
   getOrganizationById,
@@ -118,5 +164,6 @@ module.exports = {
   updateOrganization,
   deleteOrganization,
   getOrganizationForOwnershipCheck,
-  getParentOrganization
+  getParentOrganization,
+  getOrganizationsByIds
 }; 

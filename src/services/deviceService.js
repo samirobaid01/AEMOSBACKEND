@@ -2,14 +2,24 @@ const { Device, State } = require('../models/initModels');
 const { ApiError } = require('../middlewares/errorHandler');
 const { v4: uuidv4 } = require('uuid');
 const { sequelize } = require('../models/initModels');
+const { Op } = require('sequelize');
 
 // Get all devices
-const getAllDevices = async () => {
+const getAllDevices = async (includeInactive = false) => {
   try {
     // Check if the association exists
     const hasAssociation = Device.associations && Device.associations.States;
     
     const query = {};
+    
+    // Only include active devices by default
+    if (!includeInactive) {
+      query.where = {
+        status: {
+          [sequelize.Op.ne]: 'inactive'
+        }
+      };
+    }
     
     // Only include the States if the association exists
     if (hasAssociation) {
@@ -70,6 +80,11 @@ const createDevice = async (deviceData) => {
     deviceData.updatedAt = now;
   }
   
+  // Set default status if not provided
+  if (!deviceData.status) {
+    deviceData.status = 'pending';
+  }
+  
   return await Device.create(deviceData);
 };
 
@@ -96,7 +111,11 @@ const deleteDevice = async (id) => {
     return false;
   }
   
-  await device.destroy();
+  // Instead of deleting, set status to inactive
+  await device.update({
+    status: 'inactive',
+    updatedAt: new Date()
+  });
   return true;
 };
 
@@ -251,6 +270,9 @@ const deviceBelongsToOrganization = async (deviceId, organizationId) => {
     return false;
   }
 };
+
+// Link the specialized check function to the getDeviceForOwnershipCheck function
+getDeviceForOwnershipCheck.resourceBelongsToOrganization = deviceBelongsToOrganization;
 
 /**
  * Get the organization ID for a device using direct SQL

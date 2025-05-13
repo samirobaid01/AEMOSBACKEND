@@ -21,6 +21,10 @@ const Area = sequelize.define('Area', {
   },
   uuid: {
     type: DataTypes.STRING(36)
+  },
+  status: {
+    type: DataTypes.ENUM('active', 'inactive', 'under_review', 'archived'),
+    defaultValue: 'under_review'
   }
 }, {
   tableName: 'Area',

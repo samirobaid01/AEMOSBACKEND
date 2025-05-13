@@ -191,15 +191,31 @@ async function userIsSystemAdmin(userId) {
  * @returns {Promise<Array>} Array of organizations
  */
 async function getUserOrganizations(userId) {
-  return await Organization.findAll({
-    include: [
-      {
-        model: OrganizationUser,
-        where: { userId },
-        required: true
-      }
-    ]
-  });
+  try {
+    console.log(`Getting organizations for user ${userId}`);
+    
+    // Use raw SQL query instead of ORM association to avoid potential issues
+    const query = `
+      SELECT o.*
+      FROM Organization o
+      JOIN OrganizationUser ou ON o.id = ou.organizationId
+      WHERE ou.userId = :userId
+    `;
+    
+    const organizations = await sequelize.query(query, {
+      replacements: { userId },
+      type: sequelize.QueryTypes.SELECT,
+      model: Organization,
+      mapToModel: true
+    });
+    
+    console.log(`Found ${organizations.length} organizations for user ${userId}`);
+    return organizations;
+  } catch (error) {
+    console.error(`Error in getUserOrganizations: ${error.message}`);
+    console.error(error.stack);
+    return [];
+  }
 }
 
 module.exports = {

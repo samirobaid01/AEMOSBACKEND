@@ -14,20 +14,30 @@ const deviceSchema = {
     name: Joi.string().max(50).required(),
     description: Joi.string().allow('', null),
     status: Joi.boolean().default(true),
-    uuid: Joi.string().uuid().allow('', null)
+    uuid: Joi.string().uuid().allow('', null),
+    organizationId: Joi.number().integer().required()
   }),
   update: Joi.object({
     name: Joi.string().max(50),
     description: Joi.string().allow('', null),
     status: Joi.boolean(),
-    uuid: Joi.string().uuid().allow('', null)
+    uuid: Joi.string().uuid().allow('', null),
+    organizationId: Joi.number().integer().required()
+  }),
+  query: Joi.object({
+    organizationId: Joi.number().integer().required()
   })
 };
 
 // Routes
 router
   .route('/')
-  .get(authenticate, checkPermission('device.view'), deviceController.getAllDevices)
+  .get(
+    authenticate, 
+    validate(deviceSchema.query, { query: true }),
+    checkPermission('device.view'),
+    deviceController.getAllDevices
+  )
   .post(
     authenticate, 
     validate(deviceSchema.create), 
@@ -48,6 +58,7 @@ router
   .route('/:id')
   .get(
     authenticate, 
+    validate(deviceSchema.query, { query: true }),
     checkPermission('device.view'),
     checkResourceOwnership(getDeviceForOwnershipCheck),
     deviceController.getDeviceById
@@ -61,6 +72,7 @@ router
   )
   .delete(
     authenticate, 
+    validate(deviceSchema.query, { query: true }),
     checkPermission('device.delete'),
     checkResourceOwnership(getDeviceForOwnershipCheck),
     deviceController.deleteDevice

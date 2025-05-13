@@ -142,36 +142,19 @@ const getDeviceForOwnershipCheck = async (id) => {
       return null; // Device doesn't exist
     }
     
-    // DEBUG: Check if this device has any area associations
-    const hasAreaAssociations = await checkDeviceHasAreaAssociations(id);
-    console.log(`Device ${id} has area associations: ${hasAreaAssociations}`);
+    // Use the direct SQL method to get the organization reliably
+    const organizationId = await getDeviceOrganization(id);
+    console.log(`Organization ID for device ${id}: ${organizationId}`);
     
-    // Find areas this device belongs to along with their organizations
-    const query = `
-      SELECT a.organizationId
-      FROM AreaDevice ad
-      JOIN Area a ON ad.areaId = a.id
-      WHERE ad.deviceId = :deviceId
-      LIMIT 1
-    `;
-    
-    const results = await sequelize.query(query, {
-      replacements: { deviceId: id },
-      type: sequelize.QueryTypes.SELECT
-    });
-    
-    console.log(`Query results for device ${id} organization:`, results);
-    
-    if (results && results.length > 0 && results[0].organizationId) {
-      console.log(`Found organization ${results[0].organizationId} for device ${id}`);
+    if (organizationId !== null) {
       return {
         id: device.id,
-        organizationId: results[0].organizationId
+        organizationId: organizationId
       };
     }
     
-    // If no organization found through area relationship, return device with null organizationId
-    console.warn(`Device ${id} is not assigned to any area with an organization. Bypassing organization check.`);
+    // If no organization found, return device with null organizationId
+    console.warn(`Device ${id} is not assigned to any area with an organization. No organization association found.`);
     return {
       id: device.id,
       organizationId: null
@@ -193,6 +176,9 @@ const getDevicesByOrganizations = async (organizationIds) => {
       return [];
     }
 
+    // Convert any string IDs to numbers
+    const orgIds = organizationIds.map(id => Number(id));
+
     // Query to get devices from areas that belong to the specified organizations
     const query = `
       SELECT DISTINCT d.*
@@ -203,16 +189,99 @@ const getDevicesByOrganizations = async (organizationIds) => {
     `;
     
     const devices = await sequelize.query(query, {
-      replacements: { organizationIds },
+      replacements: { organizationIds: orgIds },
       type: sequelize.QueryTypes.SELECT,
       model: Device,
       mapToModel: true
     });
     
+    console.log(`Found ${devices.length} devices for organizations: ${orgIds.join(', ')}`);
     return devices;
   } catch (error) {
     console.error('Error in getDevicesByOrganizations:', error.message);
     return [];
+  }
+};
+
+/**
+ * Get devices by a single organization ID
+ * @param {Number} organizationId - Organization ID
+ * @returns {Promise<Array>} Array of devices
+ */
+const getDevicesByOrganization = async (organizationId) => {
+  if (!organizationId) {
+    return [];
+  }
+  return getDevicesByOrganizations([organizationId]);
+};
+
+/**
+ * Check if a device belongs to a specified organization
+ * @param {Number} deviceId - Device ID
+ * @param {Number} organizationId - Organization ID
+ * @returns {Promise<Boolean>} True if device belongs to organization
+ */
+const deviceBelongsToOrganization = async (deviceId, organizationId) => {
+  try {
+    // First check if the device exists
+    const device = await Device.findByPk(deviceId);
+    if (!device) {
+      return false;
+    }
+
+    // Check if device belongs to the organization via Area
+    const query = `
+      SELECT COUNT(*) as count
+      FROM AreaDevice ad
+      JOIN Area a ON ad.areaId = a.id
+      WHERE ad.deviceId = :deviceId AND a.organizationId = :organizationId
+    `;
+    
+    const results = await sequelize.query(query, {
+      replacements: { 
+        deviceId: Number(deviceId), 
+        organizationId: Number(organizationId) 
+      },
+      type: sequelize.QueryTypes.SELECT
+    });
+    
+    return results[0].count > 0;
+  } catch (error) {
+    console.error(`Error in deviceBelongsToOrganization:`, error);
+    return false;
+  }
+};
+
+/**
+ * Get the organization ID for a device using direct SQL
+ * A more reliable method to get the organization a device belongs to
+ * @param {Number} deviceId - Device ID
+ * @returns {Promise<Number|null>} Organization ID or null if not found
+ */
+const getDeviceOrganization = async (deviceId) => {
+  try {
+    // Query to get the organization directly via SQL
+    const query = `
+      SELECT a.organizationId
+      FROM AreaDevice ad
+      JOIN Area a ON ad.areaId = a.id
+      WHERE ad.deviceId = :deviceId
+      LIMIT 1
+    `;
+    
+    const results = await sequelize.query(query, {
+      replacements: { deviceId: Number(deviceId) },
+      type: sequelize.QueryTypes.SELECT
+    });
+    
+    if (results && results.length > 0 && results[0].organizationId) {
+      return Number(results[0].organizationId);
+    }
+    
+    return null;
+  } catch (error) {
+    console.error(`Error in getDeviceOrganization: ${error.message}`);
+    return null;
   }
 };
 
@@ -223,5 +292,8 @@ module.exports = {
   updateDevice,
   deleteDevice,
   getDeviceForOwnershipCheck,
-  getDevicesByOrganizations
+  getDevicesByOrganizations,
+  getDevicesByOrganization,
+  deviceBelongsToOrganization,
+  getDeviceOrganization
 }; 

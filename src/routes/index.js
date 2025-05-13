@@ -379,9 +379,13 @@ router.get('/insomnia', localhostOnly, (req, res) => {
       { 
         method: 'GET', 
         path: '/devices', 
-        description: 'Get all devices (filtered by user organization for non-System Admins)', 
+        description: 'Get all devices for a specific organization', 
         auth: true,
-        permissions: ['device.view']
+        permissions: ['device.view'],
+        params: null,
+        query: {
+          organizationId: 1
+        }
       },
       { 
         method: 'POST', 
@@ -391,47 +395,44 @@ router.get('/insomnia', localhostOnly, (req, res) => {
         permissions: ['device.create'],
         params: {
           name: "Device Name",
-          serialNumber: "ABC123XYZ",
-          organizationId: 1,
-          type: "Gateway",
-          status: true,
-          firmware: "v1.2.3",
           description: "Device description",
-          configuration: {
-            ipAddress: "192.168.1.100",
-            macAddress: "AA:BB:CC:DD:EE:FF"
-          }
+          status: true,
+          uuid: "550e8400-e29b-41d4-a716-446655440000",
+          organizationId: 1
         }
       },
       { 
         method: 'GET', 
         path: '/devices/:id', 
-        description: 'Get device by ID (requires organization ownership or System Admin)', 
+        description: 'Get device by ID (requires organization ownership)', 
         auth: true,
-        permissions: ['device.view']
+        permissions: ['device.view'],
+        query: {
+          organizationId: 1
+        }
       },
       { 
         method: 'PATCH', 
         path: '/devices/:id', 
-        description: 'Update device (requires organization ownership or System Admin)', 
+        description: 'Update device (requires organization ownership)', 
         auth: true,
         permissions: ['device.update'],
         params: {
           name: "Updated Device Name",
-          firmware: "v1.3.0",
-          status: true,
           description: "Updated description",
-          configuration: {
-            ipAddress: "192.168.1.101"
-          }
+          status: true,
+          organizationId: 1
         }
       },
       { 
         method: 'DELETE', 
         path: '/devices/:id', 
-        description: 'Delete device (requires organization ownership or System Admin)', 
+        description: 'Delete device (requires organization ownership)', 
         auth: true,
-        permissions: ['device.delete']
+        permissions: ['device.delete'],
+        query: {
+          organizationId: 1
+        }
       },
     ],
     roles: [

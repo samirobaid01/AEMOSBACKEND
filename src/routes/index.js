@@ -211,6 +211,9 @@ router.get('/insomnia', localhostOnly, (req, res) => {
           parentArea: null,
           image: "example-image-url",
           uuid: "550e8400-e29b-41d4-a716-446655440000"
+        },
+        query: {
+          organizationId: 1
         }
       },
       { 
@@ -234,6 +237,9 @@ router.get('/insomnia', localhostOnly, (req, res) => {
           organizationId: 1,
           parentArea: null,
           image: "updated-image-url"
+        },
+        query: {
+          organizationId: 1
         }
       },
       { 
@@ -278,6 +284,9 @@ router.get('/insomnia', localhostOnly, (req, res) => {
           status: true,
           uuid: "550e8400-e29b-41d4-a716-446655440000",
           organizationId: 1
+        },
+        query: {
+          organizationId: 1
         }
       },
       { 
@@ -300,6 +309,9 @@ router.get('/insomnia', localhostOnly, (req, res) => {
           name: "Updated Sensor Name",
           description: "Updated description",
           status: true,
+          organizationId: 1
+        },
+        query: {
           organizationId: 1
         }
       },
@@ -431,6 +443,9 @@ router.get('/insomnia', localhostOnly, (req, res) => {
           status: true,
           uuid: "550e8400-e29b-41d4-a716-446655440000",
           organizationId: 1
+        },
+        query: {
+          organizationId: 1
         }
       },
       { 
@@ -454,6 +469,9 @@ router.get('/insomnia', localhostOnly, (req, res) => {
           description: "Updated description",
           status: true,
           organizationId: 1
+        },
+        query: {
+          organizationId: 1
         }
       },
       { 
@@ -473,7 +491,10 @@ router.get('/insomnia', localhostOnly, (req, res) => {
         path: '/roles',
         description: 'Get all roles (System Admin can see all, others can only see their organization roles)',
         auth: true,
-        permissions: ['role.view']
+        permissions: ['role.view'],
+        query: {
+          organizationId: 1
+        }
       },
       {
         method: 'POST',
@@ -484,6 +505,9 @@ router.get('/insomnia', localhostOnly, (req, res) => {
         params: {
           name: "Custom Role",
           description: "Custom role description",
+          organizationId: 1
+        },
+        query: {
           organizationId: 1
         }
       },
@@ -854,6 +878,19 @@ if (response.token) {
       // This prevents issues like "http:///path" when combining with base_url
       const routePath = route.path.startsWith('/') ? route.path.substring(1) : route.path;
       
+      // Create query parameters array
+      const parameters = [];
+      
+      // Add organizationId as a query parameter with default value of 1 for resource endpoints 
+      // that require organization context (like areas, devices, sensors)
+      if (route.query && route.query.organizationId) {
+        parameters.push({
+          name: 'organizationId',
+          value: String(route.query.organizationId),
+          description: 'Organization ID for filtering and access control'
+        });
+      }
+      
       resources.push({
         _id: requestId,
         parentId: folderIds[category],
@@ -869,7 +906,7 @@ if (response.token) {
             ? JSON.stringify(route.params, null, 2) 
             : ''
         },
-        parameters: [],
+        parameters: parameters, // Use the parameters array here
         headers: [
           {
             name: 'Content-Type',

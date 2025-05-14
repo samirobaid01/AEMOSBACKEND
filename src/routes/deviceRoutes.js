@@ -9,18 +9,19 @@ const Joi = require('joi');
 const router = express.Router();
 
 // Validation schemas
+const allowedStatuses = ['active', 'inactive', 'pending', 'maintenance', 'faulty', 'retired'];
 const deviceSchema = {
   create: Joi.object({
     name: Joi.string().max(50).required(),
     description: Joi.string().allow('', null),
-    status: Joi.boolean().default(true),
+    status: Joi.string().valid(...allowedStatuses).default('pending'),
     uuid: Joi.string().uuid().allow('', null),
     organizationId: Joi.number().integer().required()
   }),
   update: Joi.object({
     name: Joi.string().max(50),
     description: Joi.string().allow('', null),
-    status: Joi.boolean(),
+    status: Joi.string().valid(...allowedStatuses).default('pending'),
     uuid: Joi.string().uuid().allow('', null),
     organizationId: Joi.number().integer().required()
   }),

@@ -218,6 +218,79 @@ async function getUserOrganizations(userId) {
   }
 }
 
+/**
+ * Get all permissions assigned to a user (from all their roles)
+ * @param {Number} userId - ID of the user
+ * @returns {Promise<Array>} Array of permission codes
+ */
+async function getUserPermissions(userId) {
+  try {
+    // Check if user is a System Admin
+    const isSystemAdmin = await userIsSystemAdmin(userId);
+    
+    if (isSystemAdmin) {
+      // System admins have all permissions - get all permission codes
+      const query = `
+        SELECT name FROM Permission
+      `;
+      
+      const permissions = await sequelize.query(query, {
+        type: sequelize.QueryTypes.SELECT
+      });
+      
+      return permissions.map(p => p.name);
+    }
+    
+    // For regular users, get permissions from their assigned roles
+    const query = `
+      SELECT DISTINCT p.name
+      FROM Permission p
+      JOIN RolePermission rp ON p.id = rp.permissionId
+      JOIN Role r ON rp.roleId = r.id
+      JOIN OrganizationUser ou ON r.id = ou.role
+      WHERE ou.userId = :userId
+    `;
+    
+    const permissions = await sequelize.query(query, {
+      replacements: { userId },
+      type: sequelize.QueryTypes.SELECT
+    });
+    
+    return permissions.map(p => p.name);
+  } catch (error) {
+    console.error(`Error in getUserPermissions: ${error.message}`);
+    console.error(error.stack);
+    return [];
+  }
+}
+
+/**
+ * Get user role names
+ * @param {Number} userId - ID of the user
+ * @returns {Promise<Array>} Array of role names
+ */
+async function getUserRoleNames(userId) {
+  try {
+    const query = `
+      SELECT DISTINCT r.name
+      FROM Role r
+      JOIN OrganizationUser ou ON r.id = ou.role
+      WHERE ou.userId = :userId
+    `;
+    
+    const roles = await sequelize.query(query, {
+      replacements: { userId },
+      type: sequelize.QueryTypes.SELECT
+    });
+    
+    return roles.map(r => r.name);
+  } catch (error) {
+    console.error(`Error in getUserRoleNames: ${error.message}`);
+    console.error(error.stack);
+    return [];
+  }
+}
+
 module.exports = {
   getAllRoles,
   getRoleById,
@@ -230,5 +303,7 @@ module.exports = {
   assignRoleToUser,
   removeUserRole,
   userIsSystemAdmin,
-  getUserOrganizations
+  getUserOrganizations,
+  getUserPermissions,
+  getUserRoleNames
 }; 

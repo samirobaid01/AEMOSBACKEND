@@ -9,6 +9,7 @@ const authRoutes = require('./authRoutes');
 const roleRoutes = require('./roleRoutes');
 const permissionRoutes = require('./permissionRoutes');
 const userRoleRoutes = require('./userRoleRoutes');
+const reportRoutes = require('./reportRoutes');
 const sequelize = require('../config/database');
 
 const router = express.Router();
@@ -611,6 +612,118 @@ router.get('/insomnia', localhostOnly, (req, res) => {
         auth: true,
         permissions: ['role.assign']
       }
+    ],
+    reports: [
+      { 
+        method: 'GET', 
+        path: '/reports/device-status', 
+        description: 'Active/Inactive Devices by Organization', 
+        auth: true,
+        query: {
+          organizationId: 1,
+          page: 1,
+          limit: 20
+        }
+      },
+      { 
+        method: 'GET', 
+        path: '/reports/sensor-telemetry', 
+        description: 'Sensor Telemetry Data Summary (Last 24 Hours)', 
+        auth: true,
+        query: {
+          organizationId: 1,
+          page: 1,
+          limit: 20
+        }
+      },
+      { 
+        method: 'GET', 
+        path: '/reports/organization-hierarchy', 
+        description: 'Organization Hierarchy Report', 
+        auth: true,
+        query: {
+          organizationId: 1,
+          page: 1,
+          limit: 20
+        }
+      },
+      { 
+        method: 'GET', 
+        path: '/reports/user-activity', 
+        description: 'User Activity Report (By Notification Status)', 
+        auth: true,
+        query: {
+          organizationId: 1,
+          page: 1,
+          limit: 20
+        }
+      },
+      { 
+        method: 'GET', 
+        path: '/reports/area-utilization', 
+        description: 'Area Utilization Report (Devices & Sensors)', 
+        auth: true,
+        query: {
+          organizationId: 1,
+          page: 1,
+          limit: 20
+        }
+      },
+      { 
+        method: 'GET', 
+        path: '/reports/payment-method', 
+        description: 'Payment Method Analysis', 
+        auth: true,
+        query: {
+          organizationId: 1,
+          page: 1,
+          limit: 20
+        }
+      },
+      { 
+        method: 'GET', 
+        path: '/reports/rule-chain-execution', 
+        description: 'Rule Chain Execution Report', 
+        auth: true,
+        query: {
+          organizationId: 1,
+          page: 1,
+          limit: 20
+        }
+      },
+      { 
+        method: 'GET', 
+        path: '/reports/sensor-anomaly', 
+        description: 'Sensor Data Anomaly Detection', 
+        auth: true,
+        query: {
+          organizationId: 1,
+          page: 1,
+          limit: 20
+        }
+      },
+      { 
+        method: 'GET', 
+        path: '/reports/user-role-distribution', 
+        description: 'User Role Distribution Report', 
+        auth: true,
+        query: {
+          organizationId: 1,
+          page: 1,
+          limit: 20
+        }
+      },
+      { 
+        method: 'GET', 
+        path: '/reports/ticket-resolution', 
+        description: 'Ticket Resolution Performance', 
+        auth: true,
+        query: {
+          organizationId: 1,
+          page: 1,
+          limit: 20
+        }
+      }
     ]
   };
   
@@ -979,6 +1092,7 @@ router.use('/datastreams', dataStreamRoutes);
 router.use('/roles', roleRoutes);
 router.use('/permissions', permissionRoutes);
 router.use('/user-roles', userRoleRoutes);
+router.use('/reports', reportRoutes);
 
 // Handle undefined routes
 router.all('*', (req, res) => {

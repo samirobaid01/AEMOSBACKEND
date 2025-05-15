@@ -2,7 +2,7 @@ const express = require('express');
 const sensorController = require('../controllers/sensorController');
 const validate = require('../middlewares/validate');
 const { authenticate } = require('../middlewares/auth');
-const { checkPermission, checkResourceOwnership } = require('../middlewares/permission');
+const { checkPermission, checkResourceOwnership, checkOrgPermission } = require('../middlewares/permission');
 const { sensorSchema } = require('../validators/sensorValidators');
 const { getSensorForOwnershipCheck } = require('../services/sensorService');
 
@@ -48,4 +48,11 @@ router
     sensorController.deleteSensor
   );
 
+  // Get sensors by organization
+router.get(
+  '/organization/:organizationId', 
+  authenticate, 
+  checkOrgPermission('sensor.view', true, 'organizationId'), 
+  sensorController.getSensorsByOrganization
+);
 module.exports = router; 

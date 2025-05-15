@@ -80,6 +80,21 @@ const getSensorById = async (req, res, next) => {
   }
 };
 
+// Get sensors by organization
+const getSensorsByOrganization = async (req, res, next) => {
+  try {
+    const { organizationId } = req.params;
+    const sensors = await sensorService.getSensorsByOrganization(organizationId);
+    res.status(200).json({
+      status: 'success',
+      results: sensors.length,
+      data: { sensors }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // Create a new sensor
 const createSensor = async (req, res, next) => {
   try {
@@ -288,7 +303,7 @@ module.exports = {
   createSensor,
   updateSensor,
   deleteSensor,
-
+  getSensorsByOrganization,
   // Telemetry data endpoints
   getAllTelemetryData,
   getTelemetryDataBySensorId,

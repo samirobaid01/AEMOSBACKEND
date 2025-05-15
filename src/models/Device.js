@@ -14,7 +14,8 @@ const Device = sequelize.define('Device', {
     type: DataTypes.TEXT
   },
   status: {
-    type: DataTypes.BOOLEAN
+    type: DataTypes.ENUM('active', 'inactive', 'pending', 'maintenance', 'faulty', 'retired'),
+    defaultValue: 'pending'
   },
   uuid: {
     type: DataTypes.STRING(36)

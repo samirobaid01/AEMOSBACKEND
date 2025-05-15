@@ -1,17 +1,20 @@
 const authService = require('../services/authService');
 const userService = require('../services/userService');
+const roleService = require('../services/roleService');
 const { ApiError } = require('../middlewares/errorHandler');
 
 // Login user and generate token
 const login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
-    const { user, token, refreshToken } = await authService.login(email, password);
+    const { user, token, refreshToken, permissions, roles } = await authService.login(email, password);
     
     res.status(200).json({
       status: 'success',
       data: {
         user,
+        permissions,
+        roles,
         token,
         refreshToken
       }
@@ -75,13 +78,19 @@ const signup = async (req, res, next) => {
     );
     
     // Generate JWT token for automatic login
-    const token = authService.generateToken(user);
-    const refreshToken = authService.generateRefreshToken(user);
+    const token = await authService.generateToken(user);
+    const refreshToken = await authService.generateRefreshToken(user);
+    
+    // Get user permissions and roles
+    const permissions = await roleService.getUserPermissions(user.id);
+    const roles = await roleService.getUserRoleNames(user.id);
     
     res.status(201).json({
       status: 'success',
       data: {
         user,
+        permissions,
+        roles,
         token,
         refreshToken,
         notifications: notifyUser ? notifications : undefined

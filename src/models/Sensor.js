@@ -14,7 +14,8 @@ const Sensor = sequelize.define('Sensor', {
     type: DataTypes.TEXT
   },
   status: {
-    type: DataTypes.BOOLEAN
+    type: DataTypes.ENUM('active', 'inactive', 'pending', 'calibrating', 'error', 'disconnected', 'retired'),
+    defaultValue: 'pending'
   },
   uuid: {
     type: DataTypes.STRING(36)

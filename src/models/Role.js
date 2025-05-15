@@ -11,6 +11,10 @@ const Role = sequelize.define('Role', {
     type: DataTypes.STRING(50),
     allowNull: false,
     unique: true
+  },
+  organizationId: {
+    type: DataTypes.BIGINT,
+    allowNull: true
   }
 }, {
   tableName: 'Role',

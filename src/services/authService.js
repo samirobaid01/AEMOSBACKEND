@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const config = require('../config');
 const { blacklistToken } = require('./tokenBlacklistService');
+const roleService = require('./roleService');
 
 // Login a user and generate JWT token
 const login = async (email, password) => {
@@ -21,9 +22,13 @@ const login = async (email, password) => {
     throw new ApiError(401, 'Invalid email or password');
   }
   
+  // Get user permissions and roles
+  const permissions = await roleService.getUserPermissions(user.id);
+  const roles = await roleService.getUserRoleNames(user.id);
+  
   // Generate JWT token and refresh token
-  const token = generateToken(user);
-  const refreshToken = generateRefreshToken(user);
+  const token = await generateToken(user);
+  const refreshToken = await generateRefreshToken(user);
   
   return {
     user: {
@@ -32,6 +37,8 @@ const login = async (email, password) => {
       email: user.email,
       role: user.roleId
     },
+    permissions,
+    roles,
     token,
     refreshToken
   };
@@ -57,11 +64,17 @@ const logout = (token) => {
 };
 
 // Generate JWT token
-const generateToken = (user) => {
+const generateToken = async (user) => {
+  // Get user permissions and roles
+  const permissions = await roleService.getUserPermissions(user.id);
+  const roles = await roleService.getUserRoleNames(user.id);
+  
   const payload = {
     id: user.id,
     email: user.email,
-    roleId: user.roleId
+    roleId: user.roleId,
+    permissions,
+    roles
   };
   
   return jwt.sign(
@@ -72,7 +85,7 @@ const generateToken = (user) => {
 };
 
 // Generate refresh token with longer expiry
-const generateRefreshToken = (user) => {
+const generateRefreshToken = async (user) => {
   const payload = {
     id: user.id,
     tokenType: 'refresh'
@@ -104,7 +117,7 @@ const refreshToken = async (token) => {
     }
     
     // Generate new access token
-    const newToken = generateToken(user);
+    const newToken = await generateToken(user);
     
     return {
       token: newToken

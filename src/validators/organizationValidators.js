@@ -5,7 +5,7 @@ const organizationSchema = {
   create: Joi.object({
     parentId: Joi.number().integer().allow(null),
     name: Joi.string().max(50).required(),
-    status: Joi.boolean().default(true),
+    status: Joi.string().valid('active', 'inactive', 'pending', 'suspended', 'archived').default('pending'),
     detail: Joi.string().allow('', null),
     paymentMethods: Joi.string().allow('', null),
     image: Joi.string().allow('', null),
@@ -16,9 +16,10 @@ const organizationSchema = {
     contactNumber: Joi.string().max(50).allow('', null)
   }),
   update: Joi.object({
+    organizationId: Joi.number().integer().required(),
     parentId: Joi.number().integer().allow(null),
     name: Joi.string().max(50),
-    status: Joi.boolean(),
+    status: Joi.string().valid('active', 'inactive', 'pending', 'suspended', 'archived'),
     detail: Joi.string().allow('', null),
     paymentMethods: Joi.string().allow('', null),
     image: Joi.string().allow('', null),
@@ -27,6 +28,9 @@ const organizationSchema = {
     email: Joi.string().email().allow('', null),
     isParent: Joi.boolean(),
     contactNumber: Joi.string().max(50).allow('', null)
+  }),
+  query: Joi.object({
+    organizationId: Joi.number().integer().required()
   })
 };
 

@@ -1,5 +1,6 @@
 const express = require('express');
 const deviceRoutes = require('./deviceRoutes');
+const deviceTokenRoutes = require('./deviceTokenRoutes');
 const organizationRoutes = require('./organizationRoutes');
 const areaRoutes = require('./areaRoutes');
 const sensorRoutes = require('./sensorRoutes');
@@ -1083,6 +1084,7 @@ if (response.token) {
 router.use('/auth', authRoutes);
 
 // API v1 routes
+router.use('/device-tokens', deviceTokenRoutes);
 router.use('/devices', deviceRoutes);
 router.use('/organizations', organizationRoutes);
 router.use('/areas', areaRoutes);

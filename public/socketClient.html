@@ -186,9 +186,12 @@
 
     connectBtn.addEventListener('click', () => {
       // Connect to the Socket.io server
-      socket = io({
-        transports: ['websocket', 'polling'],
+      const serverUrl = window.location.origin; // Use the same origin
+      console.log(`Connecting to Socket.io server at: ${serverUrl}`);
+      
+      socket = io(serverUrl, {
         path: '/socket.io',
+        transports: ['websocket', 'polling'],
         reconnection: true,
         reconnectionAttempts: 10,
         reconnectionDelay: 1000
@@ -197,10 +200,12 @@
       socket.on('connect', () => {
         updateStatus(true);
         logEvent('connect', { socketId: socket.id });
+        console.log(`Connected to socket server: ${socket.id}`);
       });
       
       socket.on('connect_error', (error) => {
         logEvent('connect_error', { error: error.message }, 'delete');
+        console.error('Socket connection error:', error);
       });
       
       socket.on('disconnect', () => {

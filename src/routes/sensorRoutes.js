@@ -7,7 +7,14 @@ const { sensorSchema } = require('../validators/sensorValidators');
 const { getSensorForOwnershipCheck } = require('../services/sensorService');
 
 const router = express.Router();
-
+// Add a simple test route
+router.get('/test', (req, res) => {
+  console.log('Sensor test route hit');
+  res.status(200).json({
+    status: 'success',
+    message: 'Sensor test route is working!'
+  });
+});
 // Sensor routes
 router
   .route('/')
@@ -48,11 +55,13 @@ router
     sensorController.deleteSensor
   );
 
-  // Get sensors by organization
+
+// Get sensors by organization
 router.get(
   '/organization/:organizationId', 
   authenticate, 
   checkOrgPermission('sensor.view', true, 'organizationId'), 
   sensorController.getSensorsByOrganization
 );
+
 module.exports = router; 

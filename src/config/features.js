@@ -49,5 +49,12 @@ module.exports = {
     enabled: process.env.ENABLE_FEATURE_FLAGS === 'true',
     provider: process.env.FEATURE_FLAG_PROVIDER || 'local', // 'local', 'unleash', etc.
     url: process.env.FEATURE_FLAG_URL || ''
+  },
+  
+  socketio: {
+    enabled: process.env.ENABLE_SOCKET_IO !== 'false', // Default to true
+    cors: process.env.SOCKET_IO_CORS !== 'false', // Default to true
+    pingInterval: parseInt(process.env.SOCKET_IO_PING_INTERVAL || 10000, 10),
+    pingTimeout: parseInt(process.env.SOCKET_IO_PING_TIMEOUT || 5000, 10)
   }
 };

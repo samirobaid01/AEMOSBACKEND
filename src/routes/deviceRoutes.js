@@ -8,6 +8,25 @@ const Joi = require('joi');
 
 const router = express.Router();
 
+// Add non-authenticated routes first
+// Test endpoint to check if our changes are being reloaded
+router.get('/test', (req, res) => {
+  console.log('Test endpoint hit!');
+  res.status(200).json({
+    status: 'success',
+    message: 'Test endpoint is working!'
+  });
+});
+
+// Device token test endpoint - no authentication
+router.get('/token-test', (req, res) => {
+  console.log('Device token test endpoint hit!');
+  res.status(200).json({
+    status: 'success',
+    message: 'Device token test endpoint is working through deviceRoutes!'
+  });
+});
+
 // Validation schemas
 const allowedStatuses = ['active', 'inactive', 'pending', 'maintenance', 'faulty', 'retired'];
 const deviceSchema = {
@@ -30,7 +49,7 @@ const deviceSchema = {
   })
 };
 
-// Routes
+// Routes that require authentication
 router
   .route('/')
   .get(
@@ -46,13 +65,35 @@ router
     deviceController.createDevice
   );
 
-// Test endpoint to check if our changes are being reloaded
-router.get('/test', (req, res) => {
-  console.log('Test endpoint hit!');
-  res.status(200).json({
-    status: 'success',
-    message: 'Test endpoint is working!'
-  });
+// Route to create a device token (simplified)
+router.post('/token', authenticate, async (req, res) => {
+  try {
+    const { sensorId } = req.body;
+    
+    if (!sensorId) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'sensorId is required'
+      });
+    }
+    
+    // Simple token generation
+    const token = require('crypto').randomBytes(32).toString('hex');
+    
+    res.status(201).json({
+      status: 'success',
+      data: {
+        token,
+        sensorId
+      }
+    });
+  } catch (error) {
+    console.error('Error creating token:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to create token'
+    });
+  }
 });
 
 router

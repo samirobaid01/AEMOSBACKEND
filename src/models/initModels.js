@@ -17,6 +17,7 @@ const State = require('./State');
 const TelemetryData = require('./TelemetryData');
 const Ticket = require('./Ticket');
 const DataStream = require('./DataStream');
+const DeviceToken = require('./DeviceToken');
 
 // Define all the associations
 const initAssociations = () => {
@@ -81,6 +82,10 @@ const initAssociations = () => {
   // DataStream associations
   DataStream.belongsTo(TelemetryData, { foreignKey: 'telemetryDataId' });
   TelemetryData.hasMany(DataStream, { foreignKey: 'telemetryDataId' });
+  
+  // DeviceToken associations
+  DeviceToken.belongsTo(Sensor, { foreignKey: 'sensorId' });
+  Sensor.hasMany(DeviceToken, { foreignKey: 'sensorId' });
 };
 
 // Initialize all models and associations
@@ -114,5 +119,6 @@ module.exports = {
   State,
   TelemetryData,
   Ticket,
-  DataStream
+  DataStream,
+  DeviceToken
 }; 

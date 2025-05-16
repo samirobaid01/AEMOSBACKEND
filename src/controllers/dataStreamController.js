@@ -2,6 +2,10 @@ const dataStreamService = require('../services/dataStreamService');
 const { ApiError } = require('../middlewares/errorHandler');
 const notificationManager = require('../utils/notificationManager');
 const config = require('../config');
+const TelemetryData = require('../models/TelemetryData');
+const DataStream = require('../models/DataStream');
+const logger = require('../utils/logger');
+const socketManager = require('../utils/socketManager');
 
 // Get all data streams
 const getAllDataStreams = async (req, res, next) => {
@@ -221,6 +225,63 @@ const createBatchDataStreams = async (req, res, next) => {
   }
 };
 
+// Create a data stream entry with token authentication (lightweight auth for IoT devices)
+const createDataStreamWithToken = async (req, res) => {
+  try {
+    const { value, telemetryDataId } = req.body;
+    
+    // The device auth middleware has already verified the token
+    // and attached the sensor to the request
+    const sensorId = req.sensorId;
+    
+    // Verify that the telemetry data belongs to the authenticated sensor
+    const telemetryData = await TelemetryData.findOne({
+      where: { 
+        id: telemetryDataId,
+        sensorId: sensorId
+      }
+    });
+    
+    if (!telemetryData) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Telemetry data not found or does not belong to the authenticated sensor'
+      });
+    }
+    
+    // Create the data stream
+    const newDataStream = await DataStream.create({
+      value,
+      telemetryDataId,
+      recievedAt: new Date()
+    });
+    
+    res.status(201).json({
+      status: 'success',
+      data: newDataStream
+    });
+    process.nextTick(() => {
+      // Determine priority based on business rules
+      // For example, if there's an 'urgent' flag or value exceeds thresholds
+      const isPriority = req.body.urgent === true || 
+                        (req.body.thresholds && isThresholdExceeded(req.body.value, req.body.thresholds));
+      
+      notificationManager.queueDataStreamNotification(
+        newDataStream, 
+        isPriority ? 'high' : 'normal',
+        config.broadcastAll
+      );
+    });
+    
+  } catch (error) {
+    logger.error(`Error creating data stream with token: ${error.message}`);
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to create data stream'
+    });
+  }
+};
+
 module.exports = {
   getAllDataStreams,
   getDataStreamById,
@@ -229,4 +290,5 @@ module.exports = {
   updateDataStream,
   deleteDataStream,
   createBatchDataStreams,
+  createDataStreamWithToken
 }; 

@@ -1,4 +1,5 @@
 const deviceService = require('../services/deviceService');
+const deviceStateService = require('../services/deviceStateService');
 const { ApiError } = require('../middlewares/errorHandler');
 const roleService = require('../services/roleService');
 
@@ -64,6 +65,12 @@ const getDeviceById = async (req, res, next) => {
       return next(new ApiError(404, `Device with ID ${id} not found`));
     }
     
+    // Get current device state
+    const currentState = await deviceStateService.getCurrentDeviceState(id);
+    if (currentState) {
+      device.dataValues.currentState = currentState;
+    }
+    
     // Note: Organization check is handled by the checkResourceOwnership middleware
     // We've already verified the device belongs to the organization at this point
     
@@ -86,7 +93,7 @@ const createDevice = async (req, res, next) => {
     
     console.log(`Creating device for organization: ${organizationId}`);
     
-    // Create the device
+    // Create the device with updated schema fields
     const device = await deviceService.createDevice(deviceData);
     
     // TODO: Create area-device association

@@ -25,6 +25,48 @@ const Device = sequelize.define('Device', {
   },
   updatedAt: {
     type: DataTypes.DATE
+  },
+  deviceType: {
+    type: DataTypes.ENUM('actuator', 'controller', 'gateway', 'sensor_hub', 'hybrid'),
+    defaultValue: 'actuator',
+    allowNull: false
+  },
+  controlType: {
+    type: DataTypes.ENUM('binary', 'percentage', 'multistate', 'custom'),
+    defaultValue: 'binary',
+    allowNull: false
+  },
+  minValue: {
+    type: DataTypes.FLOAT,
+    allowNull: true
+  },
+  maxValue: {
+    type: DataTypes.FLOAT,
+    allowNull: true
+  },
+  defaultState: {
+    type: DataTypes.STRING(50),
+    allowNull: true
+  },
+  communicationProtocol: {
+    type: DataTypes.ENUM('wifi', 'ble', 'lorawan', 'zigbee', 'modbus', 'mqtt', 'http', 'coap'),
+    allowNull: true
+  },
+  isCritical: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
+  },
+  lastHeartbeat: {
+    type: DataTypes.DATE,
+    allowNull: true
+  },
+  metadata: {
+    type: DataTypes.JSON,
+    allowNull: true
+  },
+  capabilities: {
+    type: DataTypes.JSON,
+    allowNull: true
   }
 }, {
   tableName: 'Device',

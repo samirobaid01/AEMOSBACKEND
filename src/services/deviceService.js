@@ -1,7 +1,6 @@
-const { Device, State } = require('../models/initModels');
+const { Device, State, DeviceState, DeviceStateType, sequelize } = require('../models/initModels');
 const { ApiError } = require('../middlewares/errorHandler');
 const { v4: uuidv4 } = require('uuid');
-const { sequelize } = require('../models/initModels');
 const { Op } = require('sequelize');
 
 // Get all devices
@@ -21,15 +20,27 @@ const getAllDevices = async (includeInactive = false) => {
       };
     }
     
-    // Only include the States if the association exists
+    // Include associations
+    query.include = [];
+    
+    // Only include the old States if the association exists
     if (hasAssociation) {
-      query.include = [
-        {
-          model: State,
-          as: 'States'
-        }
-      ];
+      query.include.push({
+        model: State,
+        as: 'States'
+      });
     }
+    
+    // Include current device state
+    query.include.push({
+      model: DeviceState,
+      where: { isCurrent: true },
+      required: false,
+      include: [{
+        model: DeviceStateType,
+        attributes: ['id', 'name', 'valueType']
+      }]
+    });
     
     return await Device.findAll(query);
   } catch (error) {
@@ -45,17 +56,28 @@ const getDeviceById = async (id) => {
     // Check if the association exists
     const hasAssociation = Device.associations && Device.associations.States;
     
-    const query = {};
+    const query = {
+      include: []
+    };
     
     // Only include the States if the association exists
     if (hasAssociation) {
-      query.include = [
-        {
-          model: State,
-          as: 'States'
-        }
-      ];
+      query.include.push({
+        model: State,
+        as: 'States'
+      });
     }
+    
+    // Include current device state
+    query.include.push({
+      model: DeviceState,
+      where: { isCurrent: true },
+      required: false,
+      include: [{
+        model: DeviceStateType,
+        attributes: ['id', 'name', 'valueType']
+      }]
+    });
     
     return await Device.findByPk(id, query);
   } catch (error) {
@@ -66,41 +88,119 @@ const getDeviceById = async (id) => {
 
 // Create a new device
 const createDevice = async (deviceData) => {
-  // Generate UUID if not provided
-  if (!deviceData.uuid) {
-    deviceData.uuid = uuidv4();
-  }
+  const transaction = await sequelize.transaction();
   
-  // Set timestamps if not provided
-  const now = new Date();
-  if (!deviceData.createdAt) {
-    deviceData.createdAt = now;
+  try {
+    // Generate UUID if not provided
+    if (!deviceData.uuid) {
+      deviceData.uuid = uuidv4();
+    }
+    
+    // Set timestamps if not provided
+    const now = new Date();
+    if (!deviceData.createdAt) {
+      deviceData.createdAt = now;
+    }
+    if (!deviceData.updatedAt) {
+      deviceData.updatedAt = now;
+    }
+    
+    // Set default status if not provided
+    if (!deviceData.status) {
+      deviceData.status = 'pending';
+    }
+    
+    // Create the device
+    const device = await Device.create(deviceData, { transaction });
+    
+    // If we have a default state specified, create an initial state record
+    if (deviceData.defaultState) {
+      // Find state type for the default state
+      const stateType = await DeviceStateType.findOne({
+        where: { name: deviceData.defaultState }
+      });
+      
+      if (stateType) {
+        await DeviceState.create({
+          deviceId: device.id,
+          stateTypeId: stateType.id,
+          stateValue: deviceData.deviceType === 'actuator' ? 'false' : '',  // Default value based on device type
+          isCurrent: true,
+          initiatedBy: 'system',
+          createdAt: now
+        }, { transaction });
+      }
+    }
+    
+    await transaction.commit();
+    return device;
+  } catch (error) {
+    await transaction.rollback();
+    console.error('Error in createDevice service:', error.message);
+    throw error;
   }
-  if (!deviceData.updatedAt) {
-    deviceData.updatedAt = now;
-  }
-  
-  // Set default status if not provided
-  if (!deviceData.status) {
-    deviceData.status = 'pending';
-  }
-  
-  return await Device.create(deviceData);
 };
 
 // Update a device
 const updateDevice = async (id, deviceData) => {
-  // Update timestamp
-  deviceData.updatedAt = new Date();
+  const transaction = await sequelize.transaction();
   
-  const device = await Device.findByPk(id);
-  
-  if (!device) {
-    return null;
+  try {
+    // Update timestamp
+    deviceData.updatedAt = new Date();
+    
+    const device = await Device.findByPk(id);
+    
+    if (!device) {
+      await transaction.rollback();
+      return null;
+    }
+    
+    await device.update(deviceData, { transaction });
+    
+    // If we're updating the default state, we might need to add a new state
+    if (deviceData.defaultState && device.defaultState !== deviceData.defaultState) {
+      // Find state type for the new default state
+      const stateType = await DeviceStateType.findOne({
+        where: { name: deviceData.defaultState }
+      });
+      
+      if (stateType) {
+        // Check if there's a current state
+        const currentState = await DeviceState.findOne({
+          where: {
+            deviceId: device.id,
+            isCurrent: true
+          }
+        });
+        
+        // Only update if the current state is different
+        if (!currentState || currentState.stateTypeId !== stateType.id) {
+          // Mark existing current state as not current
+          if (currentState) {
+            await currentState.update({ isCurrent: false }, { transaction });
+          }
+          
+          // Create a new state
+          await DeviceState.create({
+            deviceId: device.id,
+            stateTypeId: stateType.id,
+            stateValue: device.deviceType === 'actuator' ? 'false' : '',  // Default value based on device type
+            isCurrent: true,
+            initiatedBy: 'system',
+            createdAt: new Date()
+          }, { transaction });
+        }
+      }
+    }
+    
+    await transaction.commit();
+    return device;
+  } catch (error) {
+    await transaction.rollback();
+    console.error('Error in updateDevice service:', error.message);
+    throw error;
   }
-  
-  await device.update(deviceData);
-  return device;
 };
 
 // Delete a device
@@ -213,6 +313,33 @@ const getDevicesByOrganizations = async (organizationIds) => {
       model: Device,
       mapToModel: true
     });
+    
+    // Fetch current states for each device
+    const deviceIds = devices.map(d => d.id);
+    
+    if (deviceIds.length > 0) {
+      const deviceStates = await DeviceState.findAll({
+        where: {
+          deviceId: { [Op.in]: deviceIds },
+          isCurrent: true
+        },
+        include: [{
+          model: DeviceStateType,
+          attributes: ['id', 'name', 'valueType']
+        }]
+      });
+      
+      // Create a map of device ID to state
+      const stateMap = {};
+      deviceStates.forEach(state => {
+        stateMap[state.deviceId] = state;
+      });
+      
+      // Add state to each device
+      devices.forEach(device => {
+        device.currentState = stateMap[device.id] || null;
+      });
+    }
     
     console.log(`Found ${devices.length} devices for organizations: ${orgIds.join(', ')}`);
     return devices;

@@ -436,15 +436,24 @@ router.get('/insomnia', localhostOnly, (req, res) => {
       { 
         method: 'POST', 
         path: '/devices', 
-        description: 'Create a new device', 
+        description: 'Create a new device with updated schema fields', 
         auth: true,
         permissions: ['device.create'],
         params: {
           name: "Device Name",
           description: "Device description",
-          status: true,
+          status: "pending",
           uuid: "550e8400-e29b-41d4-a716-446655440000",
-          organizationId: 1
+          organizationId: 1,
+          deviceType: "actuator",
+          controlType: "binary",
+          minValue: 0,
+          maxValue: 100,
+          defaultState: "Off",
+          communicationProtocol: "mqtt",
+          isCritical: false,
+          metadata: {},
+          capabilities: {}
         },
         query: {
           organizationId: 1
@@ -453,7 +462,7 @@ router.get('/insomnia', localhostOnly, (req, res) => {
       { 
         method: 'GET', 
         path: '/devices/:id', 
-        description: 'Get device by ID (requires organization ownership)', 
+        description: 'Get device by ID with current state (requires organization ownership)', 
         auth: true,
         permissions: ['device.view'],
         query: {
@@ -463,14 +472,23 @@ router.get('/insomnia', localhostOnly, (req, res) => {
       { 
         method: 'PATCH', 
         path: '/devices/:id', 
-        description: 'Update device (requires organization ownership)', 
+        description: 'Update device with expanded schema fields (requires organization ownership)', 
         auth: true,
         permissions: ['device.update'],
         params: {
           name: "Updated Device Name",
           description: "Updated description",
-          status: true,
-          organizationId: 1
+          status: "active",
+          organizationId: 1,
+          deviceType: "actuator",
+          controlType: "binary",
+          minValue: 0,
+          maxValue: 100,
+          defaultState: "On",
+          communicationProtocol: "mqtt",
+          isCritical: false,
+          metadata: {},
+          capabilities: {}
         },
         query: {
           organizationId: 1
@@ -486,6 +504,86 @@ router.get('/insomnia', localhostOnly, (req, res) => {
           organizationId: 1
         }
       },
+    ],
+    deviceStates: [
+      {
+        method: 'GET',
+        path: '/device-states/types',
+        description: 'Get all device state types',
+        auth: true,
+        permissions: ['device.view'],
+        query: {
+          deviceType: 'actuator'
+        }
+      },
+      {
+        method: 'POST',
+        path: '/device-states/types',
+        description: 'Create a new device state type (admin only)',
+        auth: true,
+        permissions: ['admin'],
+        params: {
+          name: "On",
+          description: "Device is active",
+          valueType: "boolean",
+          deviceType: "actuator"
+        }
+      },
+      {
+        method: 'GET',
+        path: '/device-states/devices/:deviceId/current',
+        description: 'Get current state for a device',
+        auth: true,
+        permissions: ['device.view'],
+        query: {
+          organizationId: 1
+        }
+      },
+      {
+        method: 'GET',
+        path: '/device-states/devices/:deviceId/history',
+        description: 'Get device state history',
+        auth: true,
+        permissions: ['device.view'],
+        query: {
+          organizationId: 1,
+          limit: 100,
+          startDate: "2023-01-01T00:00:00Z",
+          endDate: "2023-12-31T23:59:59Z"
+        }
+      },
+      {
+        method: 'POST',
+        path: '/device-states/devices/:deviceId',
+        description: 'Create a new state for a device',
+        auth: true,
+        permissions: ['device.update'],
+        params: {
+          stateTypeId: 1,
+          stateValue: "true",
+          isCurrent: true,
+          triggeredBySensor: null,
+          triggeredByRule: null,
+          expiresAt: null
+        },
+        query: {
+          organizationId: 1
+        }
+      },
+      {
+        method: 'POST',
+        path: '/device-states/transitions',
+        description: 'Create a state transition rule (admin only)',
+        auth: true,
+        permissions: ['admin'],
+        params: {
+          deviceType: "actuator",
+          fromStateId: 1,
+          toStateId: 2,
+          isAllowed: true,
+          minimumDelaySeconds: 0
+        }
+      }
     ],
     roles: [
       {

@@ -4,7 +4,7 @@ const validate = require('../middlewares/validate');
 const { authenticate } = require('../middlewares/auth');
 const { checkPermission, checkResourceOwnership } = require('../middlewares/permission');
 const { getDeviceForOwnershipCheck } = require('../services/deviceService');
-const Joi = require('joi');
+const { deviceSchema } = require('../validators/deviceValidator');
 
 const router = express.Router();
 
@@ -26,28 +26,6 @@ router.get('/token-test', (req, res) => {
     message: 'Device token test endpoint is working through deviceRoutes!'
   });
 });
-
-// Validation schemas
-const allowedStatuses = ['active', 'inactive', 'pending', 'maintenance', 'faulty', 'retired'];
-const deviceSchema = {
-  create: Joi.object({
-    name: Joi.string().max(50).required(),
-    description: Joi.string().allow('', null),
-    status: Joi.string().valid(...allowedStatuses).default('pending'),
-    uuid: Joi.string().uuid().allow('', null),
-    organizationId: Joi.number().integer().required()
-  }),
-  update: Joi.object({
-    name: Joi.string().max(50),
-    description: Joi.string().allow('', null),
-    status: Joi.string().valid(...allowedStatuses).default('pending'),
-    uuid: Joi.string().uuid().allow('', null),
-    organizationId: Joi.number().integer().required()
-  }),
-  query: Joi.object({
-    organizationId: Joi.number().integer().required()
-  })
-};
 
 // Routes that require authentication
 router

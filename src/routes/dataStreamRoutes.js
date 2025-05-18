@@ -3,6 +3,7 @@ const dataStreamController = require('../controllers/dataStreamController');
 const validate = require('../middlewares/validate');
 const { authenticate } = require('../middlewares/auth');
 const { dataStreamSchema } = require('../validators/dataStreamValidators');
+const { deviceAuth } = require('../middlewares/deviceAuth');
 
 const router = express.Router();
 
@@ -12,10 +13,18 @@ router
   .get(authenticate, dataStreamController.getAllDataStreams)
   .post(authenticate, validate(dataStreamSchema.create), dataStreamController.createDataStream);
 
+// Special endpoint for IoT devices to submit data using token auth
+router.post(
+  '/token',
+  deviceAuth,
+  validate(dataStreamSchema.create),
+  dataStreamController.createDataStreamWithToken
+);
+
 // Batch endpoint for creating multiple datastreams at once
 router
   .route('/batch')
-  .post(authenticate, validate(dataStreamSchema.createBatch), dataStreamController.createBatchDataStreams);
+  .post(deviceAuth, validate(dataStreamSchema.createBatch), dataStreamController.createBatchDataStreams);
 
 // Get data streams for a telemetry data item - specific route comes before parameterized route
 router.get('/telemetry/:telemetryDataId', authenticate, dataStreamController.getDataStreamsByTelemetryId);

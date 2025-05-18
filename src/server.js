@@ -16,8 +16,17 @@ const startServer = async () => {
     await sequelize.authenticate();
     logger.info('Database connection established successfully');
     
-    // Initialize models and their associations
+    // Initialize all models and their associations
     await initModels();
+    
+    // Add a direct test route to the HTTP server
+    app.get('/direct-test', (req, res) => {
+      console.log('*** DIRECT TEST ROUTE HIT ***');
+      res.status(200).json({
+        status: 'success',
+        message: 'Direct test route is working!'
+      });
+    });
     
     // In development, you might want to sync the database, but be careful!
     // This should be disabled in production and replaced with proper migrations
@@ -34,13 +43,17 @@ const startServer = async () => {
     // Create HTTP server with Express app
     const server = http.createServer(app);
     
-    // Initialize Socket.io
-    socketManager.initialize(server);
+    // Initialize Socket.io if enabled in features
+    if (config.features.socketio && config.features.socketio.enabled) {
+      socketManager.initialize(server);
+    }
     
     // Start server
     server.listen(PORT, () => {
       logger.info(`Server running in ${config.server.nodeEnv} mode on port ${PORT}`);
-      logger.info(`Socket.io server running on port ${PORT}`);
+      if (config.features.socketio && config.features.socketio.enabled) {
+        logger.info(`Socket.io server running on port ${PORT}`);
+      }
     });
   } catch (error) {
     logger.error('Failed to start server:', error);

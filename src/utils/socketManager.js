@@ -12,11 +12,15 @@ let io;
  */
 function initialize(server) {
   io = socketIo(server, {
+    path: '/socket.io',
     cors: {
       origin: process.env.CORS_ORIGIN || '*',
       methods: ['GET', 'POST'],
       credentials: true
-    }
+    },
+    transports: ['websocket', 'polling'],
+    pingInterval: 10000,
+    pingTimeout: 5000
   });
 
   io.on('connection', (socket) => {

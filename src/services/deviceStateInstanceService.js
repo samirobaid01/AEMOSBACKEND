@@ -3,6 +3,7 @@ const { ApiError } = require('../middlewares/errorHandler');
 
 class DeviceStateInstanceService {
   async createInstance(data, userId) {
+    try{
     const { deviceUuid, stateName, value, initiatedBy } = data;
 
     // Find device by UUID
@@ -44,7 +45,11 @@ class DeviceStateInstanceService {
       initiatedBy: initiatedBy || 'user',
       initiatorId: userId
     });
+  } catch (error) {
+    console.error('Error in createInstance service:', error.message);
+    throw new ApiError(500, 'Failed to create state instance');
   }
+}
 
   async closeCurrentInstance(deviceStateId) {
     const currentInstance = await DeviceStateInstance.findOne({

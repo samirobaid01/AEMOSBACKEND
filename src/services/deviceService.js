@@ -1,4 +1,4 @@
-const { Device, DeviceState, DeviceStateInstance, Area, AreaDevice, sequelize } = require('../models/initModels');
+const { Device, DeviceState, DeviceStateInstance, sequelize } = require('../models/initModels');
 const { ApiError } = require('../middlewares/errorHandler');
 const { v4: uuidv4 } = require('uuid');
 const { Op } = require('sequelize');
@@ -69,9 +69,7 @@ const createDevice = async (deviceData) => {
   
   try {
     // Generate UUID if not provided
-    if (!deviceData.uuid) {
-      deviceData.uuid = uuidv4();
-    }
+    deviceData.uuid = uuidv4();
     
     // Set timestamps if not provided
     const now = new Date();
@@ -435,7 +433,6 @@ module.exports = {
   updateDevice,
   deleteDevice,
   getDeviceForOwnershipCheck,
-  associateDeviceWithArea,
   getDevicesByOrganizations,
   getDevicesByOrganization,
   deviceBelongsToOrganization,

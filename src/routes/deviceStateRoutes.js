@@ -36,8 +36,9 @@ router.get(
 // Create new state for a device
 router.post(
   '/device/:deviceId',
-  checkPermission('device.update'),
+  authenticate,
   validate(deviceStateValidator.createDeviceState),
+  checkPermission('device.update'),
   deviceStateController.createDeviceState
 );
 

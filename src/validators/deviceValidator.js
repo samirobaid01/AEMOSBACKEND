@@ -5,7 +5,6 @@ const allowedStatuses = ['active', 'inactive', 'pending', 'maintenance', 'faulty
 const allowedDeviceTypes = ['actuator', 'controller', 'gateway', 'sensor_hub', 'hybrid'];
 const allowedControlTypes = ['binary', 'percentage', 'multistate', 'custom'];
 const allowedProtocols = ['wifi', 'ble', 'lorawan', 'zigbee', 'modbus', 'mqtt', 'http', 'coap'];
-
 const deviceSchema = {
   create: Joi.object({
     name: Joi.string().max(50).required(),
@@ -22,7 +21,8 @@ const deviceSchema = {
     isCritical: Joi.boolean().default(false),
     metadata: Joi.object().allow(null),
     capabilities: Joi.object().allow(null),
-    areaId: Joi.number().integer().allow(null) // Optional area ID for creating device-area association
+    areaId: Joi.number().integer().allow(null), // Optional area ID for creating device-area association
+    controlModes: Joi.string().allow(null)
   }),
   update: Joi.object({
     name: Joi.string().max(50),

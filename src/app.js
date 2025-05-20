@@ -135,7 +135,7 @@ app.use('/api/v1', indexRoutes);
 // Mount API routes
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/devices', deviceRoutes);
-app.use('/api/v1/device-states', deviceStateRoutes);
+// app.use('/api/v1/device-states', deviceStateRoutes); // Comment this out - already handled in index.js
 app.use('/api/v1/organizations', organizationRoutes);
 app.use('/api/v1/areas', areaRoutes);
 app.use('/api/v1/sensors', sensorRoutes);

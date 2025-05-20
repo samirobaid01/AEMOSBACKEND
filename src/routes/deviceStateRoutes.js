@@ -1,63 +1,59 @@
 const express = require('express');
 const router = express.Router();
-const deviceStateController = require('../controllers/deviceStateController');
-const auth = require('../middlewares/auth');
-const permission = require('../middlewares/permission');
+const { authenticate } = require('../middlewares/auth');
+const { checkPermission } = require('../middlewares/permission');
 const validate = require('../middlewares/validate');
 const deviceStateValidator = require('../validators/deviceStateValidator');
+const deviceStateController = require('../controllers/deviceStateController');
+const logger = require('../utils/logger');
 
-// Public routes
-// None
+// Public test route
+router.get('/test', (req, res) => {
+  logger.info('Device state test route hit');
+  res.status(200).json({
+    status: 'success',
+    message: 'Device state route is working!'
+  });
+});
 
 // Protected routes
-router.use(auth.authenticate);
+router.use(authenticate);
 
-// Get all state types
+// Get all states for a device
 router.get(
-  '/types',
-  auth.authorize('user', 'admin'),
-  deviceStateController.getAllStateTypes
+  '/device/:deviceId',
+  checkPermission('device.view'),
+  deviceStateController.getAllDeviceStates
 );
 
-// Create a new state type (admin only)
+// Get specific state
+router.get(
+  '/:id',
+  checkPermission('device.view'),
+  deviceStateController.getDeviceStateById
+);
+
+// Create new state for a device
 router.post(
-  '/types',
-  auth.authorize('admin'),
-  validate(deviceStateValidator.createStateType),
-  deviceStateController.createStateType
-);
-
-// Get current state for a device
-router.get(
-  '/devices/:deviceId/current',
-  auth.authorize('user', 'admin'),
-  permission.checkResourceOwnership(require('../services/deviceService').getDeviceForOwnershipCheck),
-  deviceStateController.getCurrentDeviceState
-);
-
-// Get device state history
-router.get(
-  '/devices/:deviceId/history',
-  auth.authorize('user', 'admin'),
-  permission.checkResourceOwnership(require('../services/deviceService').getDeviceForOwnershipCheck),
-  deviceStateController.getDeviceStateHistory
-);
-
-// Create a new state for a device
-router.post(
-  '/devices/:deviceId',
-  auth.authorize('user', 'admin'),
+  '/device/:deviceId',
+  checkPermission('device.update'),
   validate(deviceStateValidator.createDeviceState),
-  permission.checkResourceOwnership(require('../services/deviceService').getDeviceForOwnershipCheck),
   deviceStateController.createDeviceState
 );
 
-// Create a state transition rule (admin only)
-router.post(
-  '/transitions',
-  auth.authorize('admin'),
-  validate(deviceStateValidator.createStateTransition),
-  deviceStateController.createStateTransition
+// Update state
+router.patch(
+  '/:id',
+  checkPermission('device.update'),
+  validate(deviceStateValidator.updateDeviceState),
+  deviceStateController.updateDeviceState
+);
+
+// Delete state
+router.delete(
+  '/:id',
+  checkPermission('device.update'),
+  deviceStateController.deleteDeviceState
 );
 
 module.exports = router; 

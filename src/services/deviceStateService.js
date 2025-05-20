@@ -1,11 +1,4 @@
-const { 
-  Device, 
-  DeviceState, 
-  DeviceStateType, 
-  DeviceStateTransition,
-  User,
-  sequelize 
-} = require('../models/initModels');
+const { Device, DeviceState } = require('../models/initModels');
 const { ApiError } = require('../middlewares/errorHandler');
 
 /**
@@ -121,119 +114,110 @@ const getDeviceStateHistory = async (deviceId, limit = 100, startDate = null, en
   }
 };
 
-/**
- * Create a new device state
- * @param {Object} stateData - Device state data
- * @returns {Promise<Object>} Created device state
- */
-const createDeviceState = async (stateData) => {
-  const transaction = await sequelize.transaction();
-  
-  try {
-    // Check if device exists
-    const device = await Device.findByPk(stateData.deviceId);
-    if (!device) {
-      throw new ApiError(404, `Device with ID ${stateData.deviceId} not found`);
-    }
-    
-    // Check if state type exists
-    const stateType = await DeviceStateType.findByPk(stateData.stateTypeId);
-    if (!stateType) {
-      throw new ApiError(404, `State type with ID ${stateData.stateTypeId} not found`);
-    }
-    
-    // If this is set to be the current state, check for state transition validity
-    if (stateData.isCurrent) {
-      const currentState = await getCurrentDeviceState(stateData.deviceId);
-      
-      if (currentState) {
-        // Check if this transition is allowed
-        const isValidTransition = await isAllowedTransition(
-          device.deviceType,
-          currentState.stateTypeId,
-          stateData.stateTypeId
-        );
-        
-        if (!isValidTransition) {
-          throw new ApiError(400, `Transition from state ${currentState.stateTypeId} to ${stateData.stateTypeId} is not allowed for ${device.deviceType} devices`);
-        }
-        
-        // Update transition time if we have a current state
-        const startTime = new Date(currentState.createdAt);
-        const endTime = new Date();
-        stateData.transitionTimeMs = endTime.getTime() - startTime.getTime();
-      }
-    }
-    
-    // Create the new state
-    const deviceState = await DeviceState.create(stateData, { transaction });
-    
-    // Update the device with the new state if needed
-    if (stateData.isCurrent) {
-      await device.update({
-        updatedAt: new Date(),
-        lastHeartbeat: new Date()
-      }, { transaction });
-    }
-    
-    await transaction.commit();
-    return deviceState;
-  } catch (error) {
-    await transaction.rollback();
-    throw error;
+class DeviceStateService {
+  async getAllDeviceStates(deviceId) {
+    return await DeviceState.findAll({
+      where: { deviceId },
+      include: [{
+        model: Device,
+        as: 'device',
+        attributes: ['name', 'uuid']
+      }]
+    });
   }
-};
 
-/**
- * Check if a state transition is allowed
- * @param {String} deviceType - Device type
- * @param {Number} fromStateId - From state ID
- * @param {Number} toStateId - To state ID
- * @returns {Promise<Boolean>} True if transition is allowed
- */
-const isAllowedTransition = async (deviceType, fromStateId, toStateId) => {
-  // If same state, always allowed
-  if (fromStateId === toStateId) {
-    return true;
-  }
-  
-  try {
-    const transition = await DeviceStateTransition.findOne({
-      where: {
-        deviceType,
-        fromStateId,
-        toStateId
-      }
+  async getDeviceStateById(id) {
+    const state = await DeviceState.findByPk(id, {
+      include: [{
+        model: Device,
+        as: 'device',
+        attributes: ['name', 'uuid']
+      }]
     });
     
-    // If no rule defined, allow by default
-    if (!transition) {
-      return true;
+    if (!state) {
+      throw new ApiError(404, 'Device state not found');
     }
     
-    return transition.isAllowed;
-  } catch (error) {
-    console.error('Error checking state transition:', error.message);
-    return false;
+    return state;
   }
-};
 
-/**
- * Create a state transition rule
- * @param {Object} transitionData - Transition data
- * @returns {Promise<Object>} Created transition rule
- */
-const createStateTransition = async (transitionData) => {
-  return await DeviceStateTransition.create(transitionData);
-};
+  async createDeviceState(deviceId, data) {
+    // Check if device exists
+    const device = await Device.findByPk(deviceId);
+    if (!device) {
+      throw new ApiError(404, 'Device not found');
+    }
 
-module.exports = {
-  getAllStateTypes,
-  getStateTypeById,
-  createStateType,
-  getCurrentDeviceState,
-  getDeviceStateHistory,
-  createDeviceState,
-  isAllowedTransition,
-  createStateTransition
-}; 
+    // Check if state with same name already exists for this device
+    const existingState = await DeviceState.findOne({
+      where: {
+        deviceId,
+        stateName: data.stateName
+      }
+    });
+
+    if (existingState) {
+      throw new ApiError(409, `State '${data.stateName}' already exists for this device`);
+    }
+
+    // Convert allowedValues array to JSON string if it exists
+    const stateData = {
+      ...data,
+      deviceId,
+      allowedValues: data.allowedValues ? JSON.stringify(data.allowedValues) : null
+    };
+
+    return await DeviceState.create(stateData);
+  }
+
+  async updateDeviceState(id, data) {
+    const state = await this.getDeviceStateById(id);
+    
+    // If changing stateName, check for uniqueness
+    if (data.stateName && data.stateName !== state.stateName) {
+      const existingState = await DeviceState.findOne({
+        where: {
+          deviceId: state.deviceId,
+          stateName: data.stateName
+        }
+      });
+
+      if (existingState) {
+        throw new ApiError(409, `State '${data.stateName}' already exists for this device`);
+      }
+    }
+
+    // Convert allowedValues array to JSON string if it exists
+    const updateData = {
+      ...data,
+      allowedValues: data.allowedValues ? JSON.stringify(data.allowedValues) : undefined
+    };
+
+    await state.update(updateData);
+    return await this.getDeviceStateById(id);
+  }
+
+  async deleteDeviceState(id) {
+    const state = await this.getDeviceStateById(id);
+    await state.destroy();
+    return true;
+  }
+
+  async getDeviceStateByName(deviceId, stateName) {
+    const state = await DeviceState.findOne({
+      where: {
+        deviceId,
+        stateName
+      }
+    });
+
+    if (!state) {
+      throw new ApiError(404, `State '${stateName}' not found for this device`);
+    }
+
+    return state;
+  }
+}
+
+module.exports = new DeviceStateService();

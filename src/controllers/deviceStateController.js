@@ -2,6 +2,7 @@ const deviceStateService = require('../services/deviceStateService');
 const deviceService = require('../services/deviceService');
 const { ApiError } = require('../middlewares/errorHandler');
 const roleService = require('../services/roleService');
+const logger = require('../utils/logger');
 
 // Get all device state types
 const getAllStateTypes = async (req, res, next) => {
@@ -104,30 +105,14 @@ const getDeviceStateHistory = async (req, res, next) => {
 const createDeviceState = async (req, res, next) => {
   try {
     const { deviceId } = req.params;
-    const stateData = {
-      ...req.body,
-      deviceId: parseInt(deviceId),
-      initiatedBy: 'user',
-      initiatorId: req.user.id
-    };
-    console.log(`Creating new state for device ${deviceId}`);
-    
-    // Check if device exists and belongs to organization
-    // Note: This check should be handled by the checkResourceOwnership middleware
-    const device = await deviceService.getDeviceById(deviceId);
-    
-    if (!device) {
-      return next(new ApiError(404, `Device with ID ${deviceId} not found`));
-    }
-    
-    const state = await deviceStateService.createDeviceState(stateData);
-    
+    logger.info(`Creating device state for device ${deviceId}:`, req.body);
+    const state = await deviceStateService.createDeviceState(deviceId, req.body);
     res.status(201).json({
       status: 'success',
-      data: { state }
+      data: state
     });
   } catch (error) {
-    console.error('Error in createDeviceState:', error);
+    logger.error('Error in createDeviceState:', error);
     next(error);
   }
 };
@@ -150,11 +135,71 @@ const createStateTransition = async (req, res, next) => {
   }
 };
 
+const getAllDeviceStates = async (req, res, next) => {
+  try {
+    const { deviceId } = req.params;
+    const states = await deviceStateService.getAllDeviceStates(deviceId);
+    res.status(200).json({
+      status: 'success',
+      data: states
+    });
+  } catch (error) {
+    logger.error('Error in getAllDeviceStates:', error);
+    next(error);
+  }
+};
+
+const getDeviceStateById = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const state = await deviceStateService.getDeviceStateById(id);
+    res.status(200).json({
+      status: 'success',
+      data: state
+    });
+  } catch (error) {
+    logger.error('Error in getDeviceStateById:', error);
+    next(error);
+  }
+};
+
+const updateDeviceState = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const state = await deviceStateService.updateDeviceState(id, req.body);
+    res.status(200).json({
+      status: 'success',
+      data: state
+    });
+  } catch (error) {
+    logger.error('Error in updateDeviceState:', error);
+    next(error);
+  }
+};
+
+const deleteDeviceState = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    await deviceStateService.deleteDeviceState(id);
+    res.status(200).json({
+      status: 'success',
+      message: 'Device state deleted successfully'
+    });
+  } catch (error) {
+    logger.error('Error in deleteDeviceState:', error);
+    next(error);
+  }
+};
+
 module.exports = {
   getAllStateTypes,
   createStateType,
   getCurrentDeviceState,
   getDeviceStateHistory,
   createDeviceState,
-  createStateTransition
+  createStateTransition,
+  getAllDeviceStates,
+  getDeviceStateById,
+  updateDeviceState,
+  deleteDeviceState
 }; 

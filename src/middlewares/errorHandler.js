@@ -2,45 +2,39 @@ const logger = require('../utils/logger');
 
 // Custom error class for API-related errors
 class ApiError extends Error {
-  constructor(statusCode, message, isOperational = true, stack = '') {
+  constructor(statusCode, message) {
     super(message);
     this.statusCode = statusCode;
-    this.isOperational = isOperational;
-    if (stack) {
-      this.stack = stack;
-    } else {
-      Error.captureStackTrace(this, this.constructor);
-    }
+    this.status = `${statusCode}`.startsWith('4') ? 'fail' : 'error';
+    Error.captureStackTrace(this, this.constructor);
   }
 }
 
 // Handler for converting errors to API responses
 const errorHandler = (err, req, res, next) => {
-  let { statusCode, message } = err;
-  
-  // Default status code and messages for unknown errors
-  if (!statusCode) statusCode = 500;
-  
-  // In production, don't expose error details for 500s unless they're operational errors
-  if (statusCode === 500 && !err.isOperational) {
-    message = 'Internal Server Error';
+  logger.error('Error:', {
+    message: err.message,
+    stack: err.stack,
+    statusCode: err.statusCode || 500
+  });
+
+  err.statusCode = err.statusCode || 500;
+  err.status = err.status || 'error';
+
+  if (process.env.NODE_ENV === 'development') {
+    res.status(err.statusCode).json({
+      status: err.status,
+      statusCode: err.statusCode,
+      message: err.message,
+      stack: err.stack
+    });
+  } else {
+    res.status(err.statusCode).json({
+      status: err.status,
+      statusCode: err.statusCode,
+      message: err.message
+    });
   }
-
-  // Log the error
-  const logLevel = statusCode >= 500 ? 'error' : 'warn';
-  logger[logLevel](message, {
-    url: req.originalUrl,
-    method: req.method,
-    ...(err.isOperational ? { stack: err.stack } : {})
-  });
-
-  // Send error response to client
-  res.status(statusCode).json({
-    status: 'error',
-    statusCode,
-    message,
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
-  });
 };
 
 module.exports = {

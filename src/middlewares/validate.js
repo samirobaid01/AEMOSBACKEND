@@ -1,24 +1,37 @@
-const Joi = require('joi');
 const { ApiError } = require('./errorHandler');
 
-/**
- * Validator middleware factory
- * @param {Object} schema - Joi validation schema
- * @param {String} property - Request property to validate (body, params, query)
- * @returns {Function} Express middleware
- */
-const validate = (schema, property = 'body') => {
-  return (req, res, next) => {
-    const { error } = schema.validate(req[property], {
-      abortEarly: false,
-      stripUnknown: true
-    });
-    
-    if (!error) {
+const validate = (schema) => {
+  return async (req, res, next) => {
+    try {
+      // Handle both schema structures (direct and nested)
+      const bodySchema = schema.body || schema.create || schema;
+      const querySchema = schema.query;
+      const paramsSchema = schema.params;
+
+      if (paramsSchema) {
+        const { error } = paramsSchema.validate(req.params);
+        if (error) {
+          throw new ApiError(400, `Invalid parameters: ${error.details[0].message}`);
+        }
+      }
+
+      if (querySchema) {
+        const { error } = querySchema.validate(req.query);
+        if (error) {
+          throw new ApiError(400, `Invalid query: ${error.details[0].message}`);
+        }
+      }
+
+      if (bodySchema) {
+        const { error } = bodySchema.validate(req.body);
+        if (error) {
+          throw new ApiError(400, `Invalid body: ${error.details[0].message}`);
+        }
+      }
+
       next();
-    } else {
-      const errorMessages = error.details.map(detail => detail.message).join(', ');
-      next(new ApiError(400, `Validation error: ${errorMessages}`));
+    } catch (error) {
+      next(error);
     }
   };
 };

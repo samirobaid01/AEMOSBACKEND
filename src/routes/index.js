@@ -1,6 +1,8 @@
 const express = require('express');
 const deviceRoutes = require('./deviceRoutes');
 const deviceTokenRoutes = require('./deviceTokenRoutes');
+const deviceStateRoutes = require('./deviceStateRoutes');
+const deviceStateInstanceRoutes = require('./deviceStateInstanceRoutes');
 const organizationRoutes = require('./organizationRoutes');
 const areaRoutes = require('./areaRoutes');
 const sensorRoutes = require('./sensorRoutes');
@@ -508,31 +510,8 @@ router.get('/insomnia', localhostOnly, (req, res) => {
     deviceStates: [
       {
         method: 'GET',
-        path: '/device-states/types',
-        description: 'Get all device state types',
-        auth: true,
-        permissions: ['device.view'],
-        query: {
-          deviceType: 'actuator'
-        }
-      },
-      {
-        method: 'POST',
-        path: '/device-states/types',
-        description: 'Create a new device state type (admin only)',
-        auth: true,
-        permissions: ['admin'],
-        params: {
-          name: "On",
-          description: "Device is active",
-          valueType: "boolean",
-          deviceType: "actuator"
-        }
-      },
-      {
-        method: 'GET',
-        path: '/device-states/devices/:deviceId/current',
-        description: 'Get current state for a device',
+        path: '/device-states/device/:deviceId',
+        description: 'Get all states for a device',
         auth: true,
         permissions: ['device.view'],
         query: {
@@ -541,47 +520,74 @@ router.get('/insomnia', localhostOnly, (req, res) => {
       },
       {
         method: 'GET',
-        path: '/device-states/devices/:deviceId/history',
-        description: 'Get device state history',
+        path: '/device-states/:id',
+        description: 'Get specific state by ID',
         auth: true,
-        permissions: ['device.view'],
-        query: {
-          organizationId: 1,
-          limit: 100,
-          startDate: "2023-01-01T00:00:00Z",
-          endDate: "2023-12-31T23:59:59Z"
-        }
+        permissions: ['device.view']
       },
       {
         method: 'POST',
-        path: '/device-states/devices/:deviceId',
-        description: 'Create a new state for a device',
+        path: '/device-states/device/:deviceId',
+        description: 'Create new state for a device',
         auth: true,
         permissions: ['device.update'],
         params: {
-          stateTypeId: 1,
-          stateValue: "true",
-          isCurrent: true,
-          triggeredBySensor: null,
-          triggeredByRule: null,
-          expiresAt: null
-        },
-        query: {
-          organizationId: 1
+          stateName: "temperature",
+          dataType: "string",
+          defaultValue: "20",
+          allowedValues: ["15", "20", "25", "30"]
         }
       },
       {
-        method: 'POST',
-        path: '/device-states/transitions',
-        description: 'Create a state transition rule (admin only)',
+        method: 'PATCH',
+        path: '/device-states/:id',
+        description: 'Update a device state',
         auth: true,
-        permissions: ['admin'],
+        permissions: ['device.update'],
         params: {
-          deviceType: "actuator",
-          fromStateId: 1,
-          toStateId: 2,
-          isAllowed: true,
-          minimumDelaySeconds: 0
+          stateName: "temperature",
+          dataType: "string",
+          defaultValue: "25",
+          allowedValues: ["15", "20", "25", "30"]
+        }
+      },
+      {
+        method: 'DELETE',
+        path: '/device-states/:id',
+        description: 'Delete a device state',
+        auth: true,
+        permissions: ['device.update']
+      }
+    ],
+    deviceStateInstances: [
+      {
+        method: 'POST',
+        path: '/device-state-instances',
+        description: 'Create a new state instance for a device',
+        auth: true,
+        permissions: ['device.update'],
+        params: {
+          deviceUuid: "550e8400-e29b-41d4-a716-446655440000",
+          stateName: "temperature",
+          value: "25",
+          initiatedBy: "device"
+        }
+      },
+      {
+        method: 'GET',
+        path: '/device-state-instances/current/:deviceStateId',
+        description: 'Get current state instance for a device state',
+        auth: true,
+        permissions: ['device.view']
+      },
+      {
+        method: 'GET',
+        path: '/device-state-instances/history/:deviceStateId',
+        description: 'Get state instance history for a device state',
+        auth: true,
+        permissions: ['device.view'],
+        query: {
+          limit: 10
         }
       }
     ],
@@ -1184,6 +1190,8 @@ router.use('/auth', authRoutes);
 // API v1 routes
 router.use('/device-tokens', deviceTokenRoutes);
 router.use('/devices', deviceRoutes);
+router.use('/device-states', deviceStateRoutes);
+router.use('/device-state-instances', deviceStateInstanceRoutes);
 router.use('/organizations', organizationRoutes);
 router.use('/areas', areaRoutes);
 router.use('/sensors', sensorRoutes);

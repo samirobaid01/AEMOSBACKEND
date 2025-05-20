@@ -13,17 +13,12 @@ const Notification = require('./Notification');
 const OrganizationUser = require('./OrganizationUser');
 const PaymentCard = require('./PaymentCard');
 const RuleChain = require('./RuleChain');
-const State = require('./State');
 const TelemetryData = require('./TelemetryData');
 const Ticket = require('./Ticket');
 const DataStream = require('./DataStream');
 const DeviceToken = require('./DeviceToken');
-const DeviceStateType = require('./DeviceStateType');
 const DeviceState = require('./DeviceState');
-const DeviceStateTransition = require('./DeviceStateTransition');
-const DeviceCommandType = require('./DeviceCommandType');
-const DeviceCommand = require('./DeviceCommand');
-const DeviceMaintenance = require('./DeviceMaintenance');
+const DeviceStateInstance = require('./DeviceStateInstance');
 
 // Define all the associations
 const initAssociations = () => {
@@ -36,7 +31,6 @@ const initAssociations = () => {
   
   // User associations
   User.hasMany(Ticket, { foreignKey: 'assignedTo' });
-  User.hasMany(DeviceMaintenance, { foreignKey: 'performedBy' });
 
   // Role associations 
   Role.belongsTo(Organization, { foreignKey: 'organizationId' });
@@ -74,10 +68,6 @@ const initAssociations = () => {
   // RuleChain associations
   RuleChain.belongsTo(Organization, { foreignKey: 'organizationId' });
   
-  // State associations (legacy)
-  State.belongsTo(Device, { foreignKey: 'deviceId' });
-  Device.hasMany(State, { foreignKey: 'deviceId' });
-  
   // TelemetryData associations
   TelemetryData.belongsTo(Sensor, { foreignKey: 'sensorId' });
   Sensor.hasMany(TelemetryData, { foreignKey: 'sensorId' });
@@ -94,36 +84,25 @@ const initAssociations = () => {
   DeviceToken.belongsTo(Sensor, { foreignKey: 'sensorId' });
   Sensor.hasMany(DeviceToken, { foreignKey: 'sensorId' });
   
-  // DeviceStateType associations
-  DeviceStateType.hasMany(DeviceState, { foreignKey: 'stateTypeId' });
-  DeviceStateType.hasMany(DeviceStateTransition, { foreignKey: 'fromStateId', as: 'fromTransitions' });
-  DeviceStateType.hasMany(DeviceStateTransition, { foreignKey: 'toStateId', as: 'toTransitions' });
-  
-  // DeviceState associations
-  DeviceState.belongsTo(Device, { foreignKey: 'deviceId' });
-  DeviceState.belongsTo(DeviceStateType, { foreignKey: 'stateTypeId' });
-  DeviceState.belongsTo(Sensor, { foreignKey: 'triggeredBySensor' });
-  DeviceState.belongsTo(RuleChain, { foreignKey: 'triggeredByRule' });
-  Device.hasMany(DeviceState, { foreignKey: 'deviceId' });
-  
-  // DeviceStateTransition associations
-  DeviceStateTransition.belongsTo(DeviceStateType, { foreignKey: 'fromStateId', as: 'fromState' });
-  DeviceStateTransition.belongsTo(DeviceStateType, { foreignKey: 'toStateId', as: 'toState' });
-  
-  // DeviceCommandType associations
-  DeviceCommandType.hasMany(DeviceCommand, { foreignKey: 'commandTypeId' });
-  
-  // DeviceCommand associations
-  DeviceCommand.belongsTo(Device, { foreignKey: 'deviceId' });
-  DeviceCommand.belongsTo(DeviceCommandType, { foreignKey: 'commandTypeId' });
-  DeviceCommand.belongsTo(DeviceState, { foreignKey: 'relatedStateId' });
-  Device.hasMany(DeviceCommand, { foreignKey: 'deviceId' });
-  
-  // DeviceMaintenance associations
-  DeviceMaintenance.belongsTo(Device, { foreignKey: 'deviceId' });
-  DeviceMaintenance.belongsTo(User, { foreignKey: 'performedBy' });
-  DeviceMaintenance.belongsTo(DeviceState, { foreignKey: 'relatedStateId' });
-  Device.hasMany(DeviceMaintenance, { foreignKey: 'deviceId' });
+  // Device State associations
+  DeviceState.belongsTo(Device, {
+    foreignKey: 'deviceId',
+    as: 'device'
+  });
+  Device.hasMany(DeviceState, {
+    foreignKey: 'deviceId',
+    as: 'states'
+  });
+
+  // DeviceStateInstance associations
+  DeviceState.hasMany(DeviceStateInstance, {
+    foreignKey: 'deviceStateId',
+    as: 'instances'
+  });
+  DeviceStateInstance.belongsTo(DeviceState, {
+    foreignKey: 'deviceStateId',
+    as: 'state'
+  });
 };
 
 // Initialize all models and associations
@@ -154,15 +133,10 @@ module.exports = {
   OrganizationUser,
   PaymentCard,
   RuleChain,
-  State,
   TelemetryData,
   Ticket,
   DataStream,
   DeviceToken,
-  DeviceStateType,
   DeviceState,
-  DeviceStateTransition,
-  DeviceCommandType,
-  DeviceCommand,
-  DeviceMaintenance
+  DeviceStateInstance
 }; 

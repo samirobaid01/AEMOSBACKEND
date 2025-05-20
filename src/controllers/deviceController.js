@@ -66,10 +66,10 @@ const getDeviceById = async (req, res, next) => {
     }
     
     // Get current device state
-    const currentState = await deviceStateService.getCurrentDeviceState(id);
-    if (currentState) {
-      device.dataValues.currentState = currentState;
-    }
+    // const currentState = await deviceStateService.getCurrentDeviceState(id);
+    // if (currentState) {
+    //   device.dataValues.currentState = currentState;
+    // }
     
     // Note: Organization check is handled by the checkResourceOwnership middleware
     // We've already verified the device belongs to the organization at this point
@@ -89,12 +89,19 @@ const getDeviceById = async (req, res, next) => {
 const createDevice = async (req, res, next) => {
   try {
     const deviceData = req.body;
-    const { organizationId } = req.body;
+    const { organizationId, areaId } = req.body;
     
     console.log(`Creating device for organization: ${organizationId}`);
     
     // Create the device with updated schema fields
     const device = await deviceService.createDevice(deviceData);
+    try {
+      await deviceService.associateDeviceWithArea(device.id, areaId);
+      console.log(`Associated device ${device.id} with area ${areaId}`);
+    } catch (assocError) {
+      console.error(`Error associating device with area: ${assocError.message}`);
+      // Continue even if association fails - the device was created
+    }
     
     // TODO: Create area-device association
     // This will require:

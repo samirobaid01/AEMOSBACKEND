@@ -13,10 +13,6 @@ const Device = sequelize.define('Device', {
   description: {
     type: DataTypes.TEXT
   },
-  status: {
-    type: DataTypes.ENUM('active', 'inactive', 'pending', 'maintenance', 'faulty', 'retired'),
-    defaultValue: 'pending'
-  },
   uuid: {
     type: DataTypes.STRING(36)
   },
@@ -26,30 +22,17 @@ const Device = sequelize.define('Device', {
   updatedAt: {
     type: DataTypes.DATE
   },
+  status: {
+    type: DataTypes.ENUM('active', 'inactive', 'pending', 'maintenance', 'faulty', 'retired'),
+    defaultValue: 'pending'
+  },
   deviceType: {
-    type: DataTypes.ENUM('actuator', 'controller', 'gateway', 'sensor_hub', 'hybrid'),
+    type: DataTypes.ENUM('actuator', 'controller', 'gateway', 'sensor_hub', 'hybrid', 'other'),
     defaultValue: 'actuator',
     allowNull: false
   },
-  controlType: {
-    type: DataTypes.ENUM('binary', 'percentage', 'multistate', 'custom'),
-    defaultValue: 'binary',
-    allowNull: false
-  },
-  minValue: {
-    type: DataTypes.FLOAT,
-    allowNull: true
-  },
-  maxValue: {
-    type: DataTypes.FLOAT,
-    allowNull: true
-  },
-  defaultState: {
-    type: DataTypes.STRING(50),
-    allowNull: true
-  },
   communicationProtocol: {
-    type: DataTypes.ENUM('wifi', 'ble', 'lorawan', 'zigbee', 'modbus', 'mqtt', 'http', 'coap'),
+    type: DataTypes.ENUM('wifi', 'ble', 'lorawan', 'zigbee', 'modbus', 'mqtt', 'http', 'coap', 'other'),
     allowNull: true
   },
   isCritical: {
@@ -66,7 +49,13 @@ const Device = sequelize.define('Device', {
   },
   capabilities: {
     type: DataTypes.JSON,
-    allowNull: true
+    allowNull: true,
+    comment: 'Device-specific capabilities and features'
+  },
+  controlModes: {
+    type: DataTypes.STRING(100),
+    allowNull: true,
+    comment: 'e.g., manual, remote, scheduled, sensor'
   }
 }, {
   tableName: 'Device',

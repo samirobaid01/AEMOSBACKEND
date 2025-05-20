@@ -11,10 +11,10 @@ module.exports = {
     port: process.env.DB_PORT || 3306,
     name: process.env.DB_NAME || 'aemos_core',
     user: process.env.DB_USER || 'root',
-    password: process.env.DB_PASSWORD || '',
+    password: process.env.DB_PASSWORD || ''
   },
   jwt: {
-    secret: process.env.JWT_SECRET || 'aemos_secret_key_change_in_production',
+    secret: process.env.JWT_SECRET || 'your-secret-key',
     expiresIn: process.env.JWT_EXPIRES_IN || '24h'
   },
   logging: {

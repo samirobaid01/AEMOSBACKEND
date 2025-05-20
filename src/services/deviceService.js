@@ -1,4 +1,4 @@
-const { Device, State, DeviceState, DeviceStateType, sequelize } = require('../models/initModels');
+const { Device, DeviceState, DeviceStateInstance, Area, AreaDevice, sequelize } = require('../models/initModels');
 const { ApiError } = require('../middlewares/errorHandler');
 const { v4: uuidv4 } = require('uuid');
 const { Op } = require('sequelize');
@@ -6,9 +6,6 @@ const { Op } = require('sequelize');
 // Get all devices
 const getAllDevices = async (includeInactive = false) => {
   try {
-    // Check if the association exists
-    const hasAssociation = Device.associations && Device.associations.States;
-    
     const query = {};
     
     // Only include active devices by default
@@ -20,31 +17,22 @@ const getAllDevices = async (includeInactive = false) => {
       };
     }
     
-    // Include associations
-    query.include = [];
-    
-    // Only include the old States if the association exists
-    if (hasAssociation) {
-      query.include.push({
-        model: State,
-        as: 'States'
-      });
-    }
-    
-    // Include current device state
-    query.include.push({
+    // Include device states
+    query.include = [{
       model: DeviceState,
-      where: { isCurrent: true },
-      required: false,
+      as: 'states',
       include: [{
-        model: DeviceStateType,
-        attributes: ['id', 'name', 'valueType']
+        model: DeviceStateInstance,
+        as: 'instances',
+        where: {
+          toTimestamp: null // Only get current state instance
+        },
+        required: false
       }]
-    });
+    }];
     
     return await Device.findAll(query);
   } catch (error) {
-    // Log the error and return an empty array instead of throwing
     console.error('Error in getAllDevices service:', error.message);
     return [];
   }
@@ -53,31 +41,20 @@ const getAllDevices = async (includeInactive = false) => {
 // Get a single device by ID
 const getDeviceById = async (id) => {
   try {
-    // Check if the association exists
-    const hasAssociation = Device.associations && Device.associations.States;
-    
     const query = {
-      include: []
-    };
-    
-    // Only include the States if the association exists
-    if (hasAssociation) {
-      query.include.push({
-        model: State,
-        as: 'States'
-      });
-    }
-    
-    // Include current device state
-    query.include.push({
-      model: DeviceState,
-      where: { isCurrent: true },
-      required: false,
       include: [{
-        model: DeviceStateType,
-        attributes: ['id', 'name', 'valueType']
+        model: DeviceState,
+        as: 'states',
+        include: [{
+          model: DeviceStateInstance,
+          as: 'instances',
+          where: {
+            toTimestamp: null // Only get current state instance
+          },
+          required: false
+        }]
       }]
-    });
+    };
     
     return await Device.findByPk(id, query);
   } catch (error) {
@@ -115,21 +92,20 @@ const createDevice = async (deviceData) => {
     
     // If we have a default state specified, create an initial state record
     if (deviceData.defaultState) {
-      // Find state type for the default state
-      const stateType = await DeviceStateType.findOne({
-        where: { name: deviceData.defaultState }
-      });
-      
-      if (stateType) {
-        await DeviceState.create({
-          deviceId: device.id,
-          stateTypeId: stateType.id,
-          stateValue: deviceData.deviceType === 'actuator' ? 'false' : '',  // Default value based on device type
-          isCurrent: true,
-          initiatedBy: 'system',
-          createdAt: now
-        }, { transaction });
-      }
+      const deviceState = await DeviceState.create({
+        deviceId: device.id,
+        stateName: deviceData.defaultState,
+        dataType: 'string',
+        defaultValue: deviceData.deviceType === 'actuator' ? 'false' : ''
+      }, { transaction });
+
+      // Create initial state instance
+      await DeviceStateInstance.create({
+        deviceStateId: deviceState.id,
+        value: deviceState.defaultValue,
+        fromTimestamp: now,
+        initiatedBy: 'system'
+      }, { transaction });
     }
     
     await transaction.commit();
@@ -160,38 +136,40 @@ const updateDevice = async (id, deviceData) => {
     
     // If we're updating the default state, we might need to add a new state
     if (deviceData.defaultState && device.defaultState !== deviceData.defaultState) {
-      // Find state type for the new default state
-      const stateType = await DeviceStateType.findOne({
-        where: { name: deviceData.defaultState }
-      });
+      const now = new Date();
       
-      if (stateType) {
-        // Check if there's a current state
-        const currentState = await DeviceState.findOne({
+      // Find or create the device state
+      const [deviceState] = await DeviceState.findOrCreate({
+        where: {
+          deviceId: device.id,
+          stateName: deviceData.defaultState
+        },
+        defaults: {
+          dataType: 'string',
+          defaultValue: device.deviceType === 'actuator' ? 'false' : ''
+        },
+        transaction
+      });
+
+      // Close any current state instances
+      await DeviceStateInstance.update(
+        { toTimestamp: now },
+        {
           where: {
-            deviceId: device.id,
-            isCurrent: true
-          }
-        });
-        
-        // Only update if the current state is different
-        if (!currentState || currentState.stateTypeId !== stateType.id) {
-          // Mark existing current state as not current
-          if (currentState) {
-            await currentState.update({ isCurrent: false }, { transaction });
-          }
-          
-          // Create a new state
-          await DeviceState.create({
-            deviceId: device.id,
-            stateTypeId: stateType.id,
-            stateValue: device.deviceType === 'actuator' ? 'false' : '',  // Default value based on device type
-            isCurrent: true,
-            initiatedBy: 'system',
-            createdAt: new Date()
-          }, { transaction });
+            deviceStateId: deviceState.id,
+            toTimestamp: null
+          },
+          transaction
         }
-      }
+      );
+
+      // Create new state instance
+      await DeviceStateInstance.create({
+        deviceStateId: deviceState.id,
+        value: deviceState.defaultValue,
+        fromTimestamp: now,
+        initiatedBy: 'system'
+      }, { transaction });
     }
     
     await transaction.commit();
@@ -217,6 +195,27 @@ const deleteDevice = async (id) => {
     updatedAt: new Date()
   });
   return true;
+};
+
+/**
+ * Associate a device with an area
+ * @param {Number} deviceId - The device ID to associate
+ * @param {Number} areaId - The area ID to associate the device with
+ * @throws {ApiError} If the device or area is not found
+ */
+const associateDeviceWithArea = async (deviceId, areaId) => {
+  const device = await Device.findByPk(deviceId);
+  if (!device) {
+    throw new ApiError(404, 'Device not found');
+  }
+  const area = await Area.findByPk(areaId);
+  if (!area) {
+    throw new ApiError(404, 'Area not found');
+  }
+  await AreaDevice.create({
+    deviceId,
+    areaId
+  }); 
 };
 
 /**
@@ -318,26 +317,21 @@ const getDevicesByOrganizations = async (organizationIds) => {
     const deviceIds = devices.map(d => d.id);
     
     if (deviceIds.length > 0) {
+      // Get current state instances for all devices
       const deviceStates = await DeviceState.findAll({
         where: {
-          deviceId: { [Op.in]: deviceIds },
-          isCurrent: true
+          deviceId: { [Op.in]: deviceIds }
         },
         include: [{
-          model: DeviceStateType,
-          attributes: ['id', 'name', 'valueType']
+          model: DeviceStateInstance,
+          as: 'instances',
+          required: false
         }]
       });
-      
-      // Create a map of device ID to state
-      const stateMap = {};
-      deviceStates.forEach(state => {
-        stateMap[state.deviceId] = state;
-      });
-      
-      // Add state to each device
+
+      // Add states to devices
       devices.forEach(device => {
-        device.currentState = stateMap[device.id] || null;
+        device.states = deviceStates.filter(state => state.deviceId === device.id);
       });
     }
     
@@ -441,6 +435,7 @@ module.exports = {
   updateDevice,
   deleteDevice,
   getDeviceForOwnershipCheck,
+  associateDeviceWithArea,
   getDevicesByOrganizations,
   getDevicesByOrganization,
   deviceBelongsToOrganization,

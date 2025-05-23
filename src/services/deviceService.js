@@ -1,4 +1,4 @@
-const { Device, DeviceState, DeviceStateInstance, sequelize } = require('../models/initModels');
+const { Device, AreaDevice, Area, DeviceState, DeviceStateInstance, sequelize } = require('../models/initModels');
 const { ApiError } = require('../middlewares/errorHandler');
 const { v4: uuidv4 } = require('uuid');
 const { Op } = require('sequelize');
@@ -433,6 +433,9 @@ module.exports = {
   updateDevice,
   deleteDevice,
   getDeviceForOwnershipCheck,
+  associateDeviceWithArea,
+  checkDeviceHasAreaAssociations,
+  getDeviceOrganization,
   getDevicesByOrganizations,
   getDevicesByOrganization,
   deviceBelongsToOrganization,

@@ -38,7 +38,7 @@ router
   )
   .post(
     authenticate, 
-    validate(deviceSchema.create), 
+    validate(deviceSchema.create),
     checkPermission('device.create'),
     deviceController.createDevice
   );
@@ -85,7 +85,7 @@ router
   )
   .patch(
     authenticate, 
-    validate(deviceSchema.update), 
+    validate(deviceSchema.update),
     checkPermission('device.update'),
     checkResourceOwnership(getDeviceForOwnershipCheck),
     deviceController.updateDevice

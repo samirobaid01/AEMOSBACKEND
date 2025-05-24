@@ -46,6 +46,7 @@ const startServer = async () => {
     // Initialize Socket.io if enabled in features
     if (config.features.socketio && config.features.socketio.enabled) {
       socketManager.initialize(server);
+      logger.info('Socket.io server initialized');
     }
     
     // Start server
@@ -66,6 +67,13 @@ process.on('unhandledRejection', error => {
   logger.error('UNHANDLED REJECTION:', error);
   
   // Gracefully shutdown
+  process.exit(1);
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (err) => {
+  logger.error('UNCAUGHT EXCEPTION! 💥 Shutting down...');
+  logger.error(err.name, err.message);
   process.exit(1);
 });
 

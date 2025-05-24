@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AEMOS Device State Socket Client (localhost only)</title>
+  <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      line-height: 1.5;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    h1 {
+      color: #333;
+    }
+    .security-warning {
+      background-color: #fff3cd;
+      border-left: 4px solid #856404;
+      color: #856404;
+      padding: 10px;
+      margin-bottom: 20px;
+      border-radius: 4px;
+      font-weight: bold;
+    }
+    #status {
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 4px;
+    }
+    .connected {
+      background-color: #d4edda;
+      color: #155724;
+    }
+    .disconnected {
+      background-color: #f8d7da;
+      color: #721c24;
+    }
+    .event-log {
+      margin-top: 20px;
+      border: 1px solid #ddd;
+      padding: 10px;
+      height: 400px;
+      overflow-y: auto;
+      background-color: #f9f9f9;
+    }
+    .event {
+      margin-bottom: 10px;
+      padding: 8px;
+      border-radius: 4px;
+    }
+    .high-priority {
+      background-color: #f8d7da;
+      border-left: 4px solid #721c24;
+    }
+    .normal-priority {
+      background-color: #d1ecf1;
+      border-left: 4px solid #0c5460;
+    }
+    .controls {
+      margin: 20px 0;
+      display: flex;
+      gap: 10px;
+    }
+    button, input {
+      padding: 8px 12px;
+    }
+    button {
+      cursor: pointer;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 4px;
+    }
+    button:hover {
+      background-color: #0069d9;
+    }
+    .input-group {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>AEMOS Device State Socket Client</h1>
+    
+    <div class="security-warning">
+      <p>⚠️ This is a development tool accessible from localhost only. Not for production use.</p>
+    </div>
+    
+    <div id="status" class="disconnected">Disconnected</div>
+    
+    <div class="controls">
+      <button id="connect">Connect</button>
+      <button id="disconnect">Disconnect</button>
+    </div>
+
+    <div class="controls">
+      <div class="input-group">
+        <input type="text" id="deviceId" placeholder="Device ID">
+        <button id="joinDeviceRoom">Join Device Room</button>
+      </div>
+      <div class="input-group">
+        <input type="text" id="deviceUuid" placeholder="Device UUID">
+        <button id="joinDeviceUuidRoom">Join Device UUID Room</button>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button id="testStateChange">Test State Change</button>
+    </div>
+
+    <h2>Event Log</h2>
+    <div id="eventLog" class="event-log"></div>
+  </div>
+
+  <script>
+    let socket;
+    let currentToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MTEsImVtYWlsIjoidXNlckBleGFtcGxlLmNvbSIsImlhdCI6MTc0NjkwMzc5NSwiZXhwIjoxNzQ2OTkwMTk1fQ.PltqK0uRAAC-b760bxeg3OyVqgSaUGMSt1c6JVNYpLw';
+    const statusEl = document.getElementById('status');
+    const eventLogEl = document.getElementById('eventLog');
+    const connectBtn = document.getElementById('connect');
+    const disconnectBtn = document.getElementById('disconnect');
+    const deviceIdInput = document.getElementById('deviceId');
+    const deviceUuidInput = document.getElementById('deviceUuid');
+    const joinDeviceRoomBtn = document.getElementById('joinDeviceRoom');
+    const joinDeviceUuidRoomBtn = document.getElementById('joinDeviceUuidRoom');
+    const testStateChangeBtn = document.getElementById('testStateChange');
+
+    function updateStatus(connected) {
+      if (connected) {
+        statusEl.textContent = `Connected (Socket ID: ${socket.id})`;
+        statusEl.className = 'connected';
+        connectBtn.disabled = true;
+        disconnectBtn.disabled = false;
+      } else {
+        statusEl.textContent = 'Disconnected';
+        statusEl.className = 'disconnected';
+        connectBtn.disabled = false;
+        disconnectBtn.disabled = true;
+      }
+    }
+
+    function logEvent(event, data, priority = 'normal') {
+      const date = new Date().toLocaleTimeString();
+      const eventDiv = document.createElement('div');
+      eventDiv.className = `event ${priority}-priority`;
+      
+      eventDiv.innerHTML = `
+        <strong>${date} - ${event}</strong>
+        <pre>${JSON.stringify(data, null, 2)}</pre>
+      `;
+      
+      eventLogEl.prepend(eventDiv);
+    }
+
+    async function makeApiRequest(method, endpoint, data = null) {
+      const options = {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${currentToken}`
+        }
+      };
+
+      if (data && (method === 'POST' || method === 'PATCH')) {
+        options.body = JSON.stringify(data);
+      }
+
+      try {
+        const response = await fetch(`/api/v1${endpoint}`, options);
+        
+        if (!response.ok) {
+          throw new Error(`API request failed with status ${response.status}`);
+        }
+        
+        if (response.status === 204) {
+          return { success: true };
+        }
+        
+        return await response.json();
+      } catch (error) {
+        console.error('API request error:', error);
+        logEvent('api-error', { error: error.message }, 'high');
+        return { error: error.message };
+      }
+    }
+
+    connectBtn.addEventListener('click', () => {
+      const serverUrl = window.location.origin;
+      console.log(`Connecting to Socket.io server at: ${serverUrl}`);
+      
+      socket = io(serverUrl, {
+        path: '/socket.io',
+        transports: ['websocket', 'polling'],
+        reconnection: true,
+        reconnectionAttempts: 10,
+        reconnectionDelay: 1000
+      });
+      
+      socket.on('connect', () => {
+        updateStatus(true);
+        logEvent('connect', { socketId: socket.id });
+        console.log(`Connected to socket server: ${socket.id}`);
+      });
+      
+      socket.on('connect_error', (error) => {
+        logEvent('connect_error', { error: error.message }, 'high');
+        console.error('Socket connection error:', error);
+      });
+      
+      socket.on('disconnect', () => {
+        updateStatus(false);
+        logEvent('disconnect', {});
+      });
+      
+      // Listen for device state change events
+      socket.on('device-state-change', (data) => {
+        const priority = data.priority === 'high' ? 'high' : 'normal';
+        logEvent('device-state-change', data, priority);
+      });
+    });
+
+    disconnectBtn.addEventListener('click', () => {
+      if (socket) {
+        socket.disconnect();
+      }
+    });
+
+    joinDeviceRoomBtn.addEventListener('click', () => {
+      const deviceId = deviceIdInput.value.trim();
+      if (socket && socket.connected && deviceId) {
+        socket.emit('join', `device-${deviceId}`);
+        logEvent('join-room', { room: `device-${deviceId}` });
+      } else {
+        alert('Please connect to the server and enter a valid Device ID');
+      }
+    });
+
+    joinDeviceUuidRoomBtn.addEventListener('click', () => {
+      const deviceUuid = deviceUuidInput.value.trim();
+      if (socket && socket.connected && deviceUuid) {
+        socket.emit('join', `device-uuid-${deviceUuid}`);
+        logEvent('join-room', { room: `device-uuid-${deviceUuid}` });
+      } else {
+        alert('Please connect to the server and enter a valid Device UUID');
+      }
+    });
+
+    testStateChangeBtn.addEventListener('click', async () => {
+      const deviceId = deviceIdInput.value.trim();
+      if (!deviceId) {
+        alert('Please enter a Device ID first');
+        return;
+      }
+
+      // Create a test state instance
+      const result = await makeApiRequest('POST', '/device-state-instances', {
+        deviceId: parseInt(deviceId),
+        stateId: 1, // Example state ID
+        value: `test-value-${Math.floor(Math.random() * 100)}`,
+        metadata: {
+          deviceName: `Test Device ${deviceId}`,
+          stateName: 'Test State',
+          deviceType: 'TEST',
+          deviceId: parseInt(deviceId),
+          deviceUuid: deviceUuidInput.value.trim() || `test-uuid-${deviceId}`,
+          oldValue: 'old-value',
+          newValue: 'new-value'
+        }
+      });
+      
+      logEvent('test-state-change', result);
+    });
+
+    // Initialize the UI
+    updateStatus(false);
+    disconnectBtn.disabled = true;
+  </script>
+</body>
+</html> 

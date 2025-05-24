@@ -1,11 +1,24 @@
 const deviceStateInstanceService = require('../services/deviceStateInstanceService');
+const notificationManager = require('../utils/notificationManager');
+const config = require('../config');
 
 const createStateInstance = async (req, res, next) => {
   try {
-    const instance = await deviceStateInstanceService.createInstance(req.body, req.user.id);
+    const result = await deviceStateInstanceService.createInstance(req.body, req.user.id);
+    
+    // Send immediate response
     res.status(201).json({
       status: 'success',
-      data: instance
+      data: result.instance
+    });
+
+    // Queue notification asynchronously
+    process.nextTick(() => {
+      notificationManager.queueStateChangeNotification(
+        result.metadata,
+        null, // Let notification manager determine priority
+        config.broadcastAll || false
+      );
     });
   } catch (error) {
     next(error);

@@ -12,8 +12,8 @@ class NotificationManager {
     this.dataBuffers = new Map();
     
     // Configuration
-    this.broadcastInterval = options.broadcastInterval || config.features.notifications.broadcastInterval || 1000;
-    this.maxBufferSize = options.maxBufferSize || config.features.notifications.bufferSize || 1000;
+    this.broadcastInterval = options.broadcastInterval || config.features?.notifications?.broadcastInterval || 1000;
+    this.maxBufferSize = options.maxBufferSize || config.features?.notifications?.bufferSize || 1000;
     this.debug = options.debug || false;
     
     // Set up interval for processing buffered notifications
@@ -180,6 +180,87 @@ class NotificationManager {
     clearInterval(this.intervalId);
     this.dataBuffers.clear();
     logger.info('NotificationManager shut down');
+  }
+
+  determineStatePriority(metadata) {
+    // Rules for priority:
+    // - Critical devices always high priority
+    // - Certain state changes might be high priority
+    return (
+      metadata.isCritical ||
+      this.isHighPriorityState(metadata.stateName) ||
+      this.isSignificantChange(metadata.oldValue, metadata.newValue)
+    );
+  }
+
+  isHighPriorityState(stateName) {
+    const highPriorityStates = ['error', 'fault', 'alarm', 'emergency', 'critical'];
+    return highPriorityStates.some(state => 
+      stateName.toLowerCase().includes(state.toLowerCase())
+    );
+  }
+
+  isSignificantChange(oldValue, newValue) {
+    // If either value is null, consider it significant
+    if (oldValue === null || newValue === null) return true;
+
+    // For boolean values
+    if (typeof oldValue === 'boolean' || typeof newValue === 'boolean') {
+      return oldValue !== newValue;
+    }
+
+    // For numeric values, check if change is more than 50%
+    const numOld = parseFloat(oldValue);
+    const numNew = parseFloat(newValue);
+    if (!isNaN(numOld) && !isNaN(numNew) && numOld !== 0) {
+      return Math.abs((numNew - numOld) / numOld) > 0.5;
+    }
+
+    // For other types, any change is significant
+    return oldValue !== newValue;
+  }
+
+  queueStateChangeNotification(metadata, priority = null, broadcastAll = false) {
+    try {
+      // Determine priority if not provided
+      if (priority === null) {
+        priority = this.determineStatePriority(metadata) ? 'high' : 'normal';
+      }
+
+      const notification = {
+        title: `Device State Change: ${metadata.deviceName}`,
+        message: `State '${metadata.stateName}' changed from '${metadata.oldValue || 'undefined'}' to '${metadata.newValue}'`,
+        type: 'state_change',
+        deviceType: metadata.deviceType,
+        deviceId: metadata.deviceId,
+        deviceUuid: metadata.deviceUuid,
+        priority,
+        timestamp: new Date(),
+        metadata
+      };
+
+      // Emit via WebSocket
+      if (broadcastAll) {
+        // Broadcast to all connected clients
+        socketManager.broadcastToAll('device-state-change', notification);
+      } else {
+        // Emit to specific device room using UUID
+        socketManager.broadcastToRoom(`device-uuid-${metadata.deviceUuid}`, 'device-state-change', notification);
+        
+        // Also emit to room with device ID for backward compatibility
+        socketManager.broadcastToRoom(`device-${metadata.deviceId}`, 'device-state-change', notification);
+      }
+
+      // Log high priority notifications
+      if (priority === 'high') {
+        logger.info('High priority state change:', notification);
+      }
+
+      return notification;
+    } catch (error) {
+      logger.error('Error in queueStateChangeNotification:', error);
+      return null;
+    }
   }
 }
 

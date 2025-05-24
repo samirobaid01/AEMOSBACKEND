@@ -3,7 +3,6 @@ const { ApiError } = require('../middlewares/errorHandler');
 
 class DeviceStateInstanceService {
   async createInstance(data, userId) {
-    try{
     const { deviceUuid, stateName, value, initiatedBy } = data;
 
     // Find device by UUID
@@ -35,36 +34,59 @@ class DeviceStateInstanceService {
       }
     }
 
-    // Close any current state instance
-    await this.closeCurrentInstance(deviceState.id);
-
-    // Create new state instance
-    return await DeviceStateInstance.create({
-      deviceStateId: deviceState.id,
-      value,
-      initiatedBy: initiatedBy || 'user',
-      initiatorId: userId
-    });
-  } catch (error) {
-    console.error('Error in createInstance service:', error.message);
-    throw new ApiError(500, 'Failed to create state instance');
-  }
-}
-
-  async closeCurrentInstance(deviceStateId) {
+    // Get current state instance if exists
     const currentInstance = await DeviceStateInstance.findOne({
       where: {
-        deviceStateId,
+        deviceStateId: deviceState.id,
         toTimestamp: null
-      },
-      order: [['fromTimestamp', 'DESC']]
+      }
     });
 
+    // Close current state instance if exists
     if (currentInstance) {
       await currentInstance.update({
         toTimestamp: new Date()
       });
     }
+
+    // Create new state instance
+    const instance = await DeviceStateInstance.create({
+      deviceStateId: deviceState.id,
+      value,
+      fromTimestamp: new Date(),
+      initiatedBy: initiatedBy || 'user',
+      initiatorId: userId
+    });
+
+    // Return both instance and metadata for notifications
+    return {
+      instance,
+      metadata: {
+        deviceId: device.id,
+        deviceUuid: device.uuid,
+        deviceName: device.name,
+        deviceType: device.deviceType,
+        isCritical: device.isCritical,
+        stateName,
+        oldValue: currentInstance ? currentInstance.value : null,
+        newValue: value,
+        initiatedBy: initiatedBy || 'user',
+        initiatorId: userId
+      }
+    };
+  }
+
+  async closeCurrentInstance(deviceStateId) {
+    const now = new Date();
+    await DeviceStateInstance.update(
+      { toTimestamp: now },
+      {
+        where: {
+          deviceStateId,
+          toTimestamp: null
+        }
+      }
+    );
   }
 
   async getCurrentInstance(deviceStateId) {

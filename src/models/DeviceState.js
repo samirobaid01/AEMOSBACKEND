@@ -32,6 +32,11 @@ const DeviceState = sequelize.define('DeviceState', {
     type: DataTypes.JSON,
     allowNull: true
   },
+  status: {
+    type: DataTypes.ENUM('active', 'suspended', 'inactive'),
+    allowNull: false,
+    defaultValue: 'active'
+  },
   createdAt: {
     type: DataTypes.DATE,
     defaultValue: sequelize.literal('CURRENT_TIMESTAMP')

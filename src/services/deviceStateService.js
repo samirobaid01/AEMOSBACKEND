@@ -200,7 +200,9 @@ class DeviceStateService {
 
   async deleteDeviceState(id) {
     const state = await this.getDeviceStateById(id);
-    await state.destroy();
+    state.status = 'inactive';
+    await state.save();
+    //await state.destroy();
     return true;
   }
 

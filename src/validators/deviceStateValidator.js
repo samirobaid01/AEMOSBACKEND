@@ -42,7 +42,8 @@ const updateDeviceState = {
     stateName: Joi.string().max(50),
     dataType: Joi.string().max(50),
     defaultValue: Joi.string().max(100).allow(null),
-    allowedValues: Joi.array().items(Joi.string().max(100)).allow(null)
+    allowedValues: Joi.array().items(Joi.string().max(100)).allow(null),
+    status: Joi.string().valid('active', 'inactive', 'suspended').default('active')
   })
 };
 

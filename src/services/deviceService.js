@@ -1,15 +1,11 @@
-const { Device, State } = require('../models/initModels');
+const { Device, AreaDevice, Area, DeviceState, DeviceStateInstance, sequelize } = require('../models/initModels');
 const { ApiError } = require('../middlewares/errorHandler');
 const { v4: uuidv4 } = require('uuid');
-const { sequelize } = require('../models/initModels');
 const { Op } = require('sequelize');
 
 // Get all devices
 const getAllDevices = async (includeInactive = false) => {
   try {
-    // Check if the association exists
-    const hasAssociation = Device.associations && Device.associations.States;
-    
     const query = {};
     
     // Only include active devices by default
@@ -21,19 +17,22 @@ const getAllDevices = async (includeInactive = false) => {
       };
     }
     
-    // Only include the States if the association exists
-    if (hasAssociation) {
-      query.include = [
-        {
-          model: State,
-          as: 'States'
-        }
-      ];
-    }
+    // Include device states
+    query.include = [{
+      model: DeviceState,
+      as: 'states',
+      include: [{
+        model: DeviceStateInstance,
+        as: 'instances',
+        where: {
+          toTimestamp: null // Only get current state instance
+        },
+        required: false
+      }]
+    }];
     
     return await Device.findAll(query);
   } catch (error) {
-    // Log the error and return an empty array instead of throwing
     console.error('Error in getAllDevices service:', error.message);
     return [];
   }
@@ -42,20 +41,20 @@ const getAllDevices = async (includeInactive = false) => {
 // Get a single device by ID
 const getDeviceById = async (id) => {
   try {
-    // Check if the association exists
-    const hasAssociation = Device.associations && Device.associations.States;
-    
-    const query = {};
-    
-    // Only include the States if the association exists
-    if (hasAssociation) {
-      query.include = [
-        {
-          model: State,
-          as: 'States'
-        }
-      ];
-    }
+    const query = {
+      include: [{
+        model: DeviceState,
+        as: 'states',
+        include: [{
+          model: DeviceStateInstance,
+          as: 'instances',
+          where: {
+            toTimestamp: null // Only get current state instance
+          },
+          required: false
+        }]
+      }]
+    };
     
     return await Device.findByPk(id, query);
   } catch (error) {
@@ -66,41 +65,118 @@ const getDeviceById = async (id) => {
 
 // Create a new device
 const createDevice = async (deviceData) => {
-  // Generate UUID if not provided
-  if (!deviceData.uuid) {
+  const transaction = await sequelize.transaction();
+  
+  try {
+    // Generate UUID if not provided
     deviceData.uuid = uuidv4();
+    
+    // Set timestamps if not provided
+    const now = new Date();
+    if (!deviceData.createdAt) {
+      deviceData.createdAt = now;
+    }
+    if (!deviceData.updatedAt) {
+      deviceData.updatedAt = now;
+    }
+    
+    // Set default status if not provided
+    if (!deviceData.status) {
+      deviceData.status = 'pending';
+    }
+    
+    // Create the device
+    const device = await Device.create(deviceData, { transaction });
+    
+    // If we have a default state specified, create an initial state record
+    if (deviceData.defaultState) {
+      const deviceState = await DeviceState.create({
+        deviceId: device.id,
+        stateName: deviceData.defaultState,
+        dataType: 'string',
+        defaultValue: deviceData.deviceType === 'actuator' ? 'false' : ''
+      }, { transaction });
+
+      // Create initial state instance
+      await DeviceStateInstance.create({
+        deviceStateId: deviceState.id,
+        value: deviceState.defaultValue,
+        fromTimestamp: now,
+        initiatedBy: 'system'
+      }, { transaction });
+    }
+    
+    await transaction.commit();
+    return device;
+  } catch (error) {
+    await transaction.rollback();
+    console.error('Error in createDevice service:', error.message);
+    throw error;
   }
-  
-  // Set timestamps if not provided
-  const now = new Date();
-  if (!deviceData.createdAt) {
-    deviceData.createdAt = now;
-  }
-  if (!deviceData.updatedAt) {
-    deviceData.updatedAt = now;
-  }
-  
-  // Set default status if not provided
-  if (!deviceData.status) {
-    deviceData.status = 'pending';
-  }
-  
-  return await Device.create(deviceData);
 };
 
 // Update a device
 const updateDevice = async (id, deviceData) => {
-  // Update timestamp
-  deviceData.updatedAt = new Date();
+  const transaction = await sequelize.transaction();
   
-  const device = await Device.findByPk(id);
-  
-  if (!device) {
-    return null;
+  try {
+    // Update timestamp
+    deviceData.updatedAt = new Date();
+    
+    const device = await Device.findByPk(id);
+    
+    if (!device) {
+      await transaction.rollback();
+      return null;
+    }
+    
+    await device.update(deviceData, { transaction });
+    
+    // If we're updating the default state, we might need to add a new state
+    if (deviceData.defaultState && device.defaultState !== deviceData.defaultState) {
+      const now = new Date();
+      
+      // Find or create the device state
+      const [deviceState] = await DeviceState.findOrCreate({
+        where: {
+          deviceId: device.id,
+          stateName: deviceData.defaultState
+        },
+        defaults: {
+          dataType: 'string',
+          defaultValue: device.deviceType === 'actuator' ? 'false' : ''
+        },
+        transaction
+      });
+
+      // Close any current state instances
+      await DeviceStateInstance.update(
+        { toTimestamp: now },
+        {
+          where: {
+            deviceStateId: deviceState.id,
+            toTimestamp: null
+          },
+          transaction
+        }
+      );
+
+      // Create new state instance
+      await DeviceStateInstance.create({
+        deviceStateId: deviceState.id,
+        value: deviceState.defaultValue,
+        fromTimestamp: now,
+        initiatedBy: 'system'
+      }, { transaction });
+    }
+    
+    await transaction.commit();
+    return device;
+  } catch (error) {
+    await transaction.rollback();
+    console.error('Error in updateDevice service:', error.message);
+    throw error;
   }
-  
-  await device.update(deviceData);
-  return device;
 };
 
 // Delete a device
@@ -117,6 +193,27 @@ const deleteDevice = async (id) => {
     updatedAt: new Date()
   });
   return true;
+};
+
+/**
+ * Associate a device with an area
+ * @param {Number} deviceId - The device ID to associate
+ * @param {Number} areaId - The area ID to associate the device with
+ * @throws {ApiError} If the device or area is not found
+ */
+const associateDeviceWithArea = async (deviceId, areaId) => {
+  const device = await Device.findByPk(deviceId);
+  if (!device) {
+    throw new ApiError(404, 'Device not found');
+  }
+  const area = await Area.findByPk(areaId);
+  if (!area) {
+    throw new ApiError(404, 'Area not found');
+  }
+  await AreaDevice.create({
+    deviceId,
+    areaId
+  }); 
 };
 
 /**
@@ -213,6 +310,28 @@ const getDevicesByOrganizations = async (organizationIds) => {
       model: Device,
       mapToModel: true
     });
+    
+    // Fetch current states for each device
+    const deviceIds = devices.map(d => d.id);
+    
+    if (deviceIds.length > 0) {
+      // Get current state instances for all devices
+      const deviceStates = await DeviceState.findAll({
+        where: {
+          deviceId: { [Op.in]: deviceIds }
+        },
+        include: [{
+          model: DeviceStateInstance,
+          as: 'instances',
+          required: false
+        }]
+      });
+
+      // Add states to devices
+      devices.forEach(device => {
+        device.states = deviceStates.filter(state => state.deviceId === device.id);
+      });
+    }
     
     console.log(`Found ${devices.length} devices for organizations: ${orgIds.join(', ')}`);
     return devices;
@@ -314,6 +433,9 @@ module.exports = {
   updateDevice,
   deleteDevice,
   getDeviceForOwnershipCheck,
+  associateDeviceWithArea,
+  checkDeviceHasAreaAssociations,
+  getDeviceOrganization,
   getDevicesByOrganizations,
   getDevicesByOrganization,
   deviceBelongsToOrganization,

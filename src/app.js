@@ -4,6 +4,7 @@ const path = require('path');
 const indexRoutes = require('./routes/index');
 const authRoutes = require('./routes/authRoutes');
 const deviceRoutes = require('./routes/deviceRoutes');
+const deviceStateRoutes = require('./routes/deviceStateRoutes');
 const organizationRoutes = require('./routes/organizationRoutes');
 const areaRoutes = require('./routes/areaRoutes');
 const sensorRoutes = require('./routes/sensorRoutes');
@@ -134,6 +135,7 @@ app.use('/api/v1', indexRoutes);
 // Mount API routes
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/devices', deviceRoutes);
+// app.use('/api/v1/device-states', deviceStateRoutes); // Comment this out - already handled in index.js
 app.use('/api/v1/organizations', organizationRoutes);
 app.use('/api/v1/areas', areaRoutes);
 app.use('/api/v1/sensors', sensorRoutes);

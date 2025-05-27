@@ -1,6 +1,8 @@
 const express = require('express');
 const deviceRoutes = require('./deviceRoutes');
 const deviceTokenRoutes = require('./deviceTokenRoutes');
+const deviceStateRoutes = require('./deviceStateRoutes');
+const deviceStateInstanceRoutes = require('./deviceStateInstanceRoutes');
 const organizationRoutes = require('./organizationRoutes');
 const areaRoutes = require('./areaRoutes');
 const sensorRoutes = require('./sensorRoutes');
@@ -436,15 +438,24 @@ router.get('/insomnia', localhostOnly, (req, res) => {
       { 
         method: 'POST', 
         path: '/devices', 
-        description: 'Create a new device', 
+        description: 'Create a new device with updated schema fields', 
         auth: true,
         permissions: ['device.create'],
         params: {
           name: "Device Name",
           description: "Device description",
-          status: true,
+          status: "pending",
           uuid: "550e8400-e29b-41d4-a716-446655440000",
-          organizationId: 1
+          organizationId: 1,
+          deviceType: "actuator",
+          controlType: "binary",
+          minValue: 0,
+          maxValue: 100,
+          defaultState: "Off",
+          communicationProtocol: "mqtt",
+          isCritical: false,
+          metadata: {},
+          capabilities: {}
         },
         query: {
           organizationId: 1
@@ -453,7 +464,7 @@ router.get('/insomnia', localhostOnly, (req, res) => {
       { 
         method: 'GET', 
         path: '/devices/:id', 
-        description: 'Get device by ID (requires organization ownership)', 
+        description: 'Get device by ID with current state (requires organization ownership)', 
         auth: true,
         permissions: ['device.view'],
         query: {
@@ -463,14 +474,23 @@ router.get('/insomnia', localhostOnly, (req, res) => {
       { 
         method: 'PATCH', 
         path: '/devices/:id', 
-        description: 'Update device (requires organization ownership)', 
+        description: 'Update device with expanded schema fields (requires organization ownership)', 
         auth: true,
         permissions: ['device.update'],
         params: {
           name: "Updated Device Name",
           description: "Updated description",
-          status: true,
-          organizationId: 1
+          status: "active",
+          organizationId: 1,
+          deviceType: "actuator",
+          controlType: "binary",
+          minValue: 0,
+          maxValue: 100,
+          defaultState: "On",
+          communicationProtocol: "mqtt",
+          isCritical: false,
+          metadata: {},
+          capabilities: {}
         },
         query: {
           organizationId: 1
@@ -486,6 +506,90 @@ router.get('/insomnia', localhostOnly, (req, res) => {
           organizationId: 1
         }
       },
+    ],
+    deviceStates: [
+      {
+        method: 'GET',
+        path: '/device-states/device/:deviceId',
+        description: 'Get all states for a device',
+        auth: true,
+        permissions: ['device.view'],
+        query: {
+          organizationId: 1
+        }
+      },
+      {
+        method: 'GET',
+        path: '/device-states/:id',
+        description: 'Get specific state by ID',
+        auth: true,
+        permissions: ['device.view']
+      },
+      {
+        method: 'POST',
+        path: '/device-states/device/:deviceId',
+        description: 'Create new state for a device',
+        auth: true,
+        permissions: ['device.update'],
+        params: {
+          stateName: "temperature",
+          dataType: "string",
+          defaultValue: "20",
+          allowedValues: ["15", "20", "25", "30"]
+        }
+      },
+      {
+        method: 'PATCH',
+        path: '/device-states/:id',
+        description: 'Update a device state',
+        auth: true,
+        permissions: ['device.update'],
+        params: {
+          stateName: "temperature",
+          dataType: "string",
+          defaultValue: "25",
+          allowedValues: ["15", "20", "25", "30"]
+        }
+      },
+      {
+        method: 'DELETE',
+        path: '/device-states/:id',
+        description: 'Delete a device state',
+        auth: true,
+        permissions: ['device.update']
+      }
+    ],
+    deviceStateInstances: [
+      {
+        method: 'POST',
+        path: '/device-state-instances',
+        description: 'Create a new state instance for a device',
+        auth: true,
+        permissions: ['device.update'],
+        params: {
+          deviceUuid: "550e8400-e29b-41d4-a716-446655440000",
+          stateName: "temperature",
+          value: "25",
+          initiatedBy: "device"
+        }
+      },
+      {
+        method: 'GET',
+        path: '/device-state-instances/current/:deviceStateId',
+        description: 'Get current state instance for a device state',
+        auth: true,
+        permissions: ['device.view']
+      },
+      {
+        method: 'GET',
+        path: '/device-state-instances/history/:deviceStateId',
+        description: 'Get state instance history for a device state',
+        auth: true,
+        permissions: ['device.view'],
+        query: {
+          limit: 10
+        }
+      }
     ],
     roles: [
       {
@@ -1086,6 +1190,8 @@ router.use('/auth', authRoutes);
 // API v1 routes
 router.use('/device-tokens', deviceTokenRoutes);
 router.use('/devices', deviceRoutes);
+router.use('/device-states', deviceStateRoutes);
+router.use('/device-state-instances', deviceStateInstanceRoutes);
 router.use('/organizations', organizationRoutes);
 router.use('/areas', areaRoutes);
 router.use('/sensors', sensorRoutes);

@@ -13,11 +13,12 @@ const Notification = require('./Notification');
 const OrganizationUser = require('./OrganizationUser');
 const PaymentCard = require('./PaymentCard');
 const RuleChain = require('./RuleChain');
-const State = require('./State');
 const TelemetryData = require('./TelemetryData');
 const Ticket = require('./Ticket');
 const DataStream = require('./DataStream');
 const DeviceToken = require('./DeviceToken');
+const DeviceState = require('./DeviceState');
+const DeviceStateInstance = require('./DeviceStateInstance');
 
 // Define all the associations
 const initAssociations = () => {
@@ -67,10 +68,6 @@ const initAssociations = () => {
   // RuleChain associations
   RuleChain.belongsTo(Organization, { foreignKey: 'organizationId' });
   
-  // State associations
-  State.belongsTo(Device, { foreignKey: 'deviceId' });
-  Device.hasMany(State, { foreignKey: 'deviceId' });
-  
   // TelemetryData associations
   TelemetryData.belongsTo(Sensor, { foreignKey: 'sensorId' });
   Sensor.hasMany(TelemetryData, { foreignKey: 'sensorId' });
@@ -86,6 +83,26 @@ const initAssociations = () => {
   // DeviceToken associations
   DeviceToken.belongsTo(Sensor, { foreignKey: 'sensorId' });
   Sensor.hasMany(DeviceToken, { foreignKey: 'sensorId' });
+  
+  // Device State associations
+  DeviceState.belongsTo(Device, {
+    foreignKey: 'deviceId',
+    as: 'device'
+  });
+  Device.hasMany(DeviceState, {
+    foreignKey: 'deviceId',
+    as: 'states'
+  });
+
+  // DeviceStateInstance associations
+  DeviceState.hasMany(DeviceStateInstance, {
+    foreignKey: 'deviceStateId',
+    as: 'instances'
+  });
+  DeviceStateInstance.belongsTo(DeviceState, {
+    foreignKey: 'deviceStateId',
+    as: 'state'
+  });
 };
 
 // Initialize all models and associations
@@ -116,9 +133,10 @@ module.exports = {
   OrganizationUser,
   PaymentCard,
   RuleChain,
-  State,
   TelemetryData,
   Ticket,
   DataStream,
-  DeviceToken
+  DeviceToken,
+  DeviceState,
+  DeviceStateInstance
 }; 

@@ -13,10 +13,6 @@ const Device = sequelize.define('Device', {
   description: {
     type: DataTypes.TEXT
   },
-  status: {
-    type: DataTypes.ENUM('active', 'inactive', 'pending', 'maintenance', 'faulty', 'retired'),
-    defaultValue: 'pending'
-  },
   uuid: {
     type: DataTypes.STRING(36)
   },
@@ -25,6 +21,41 @@ const Device = sequelize.define('Device', {
   },
   updatedAt: {
     type: DataTypes.DATE
+  },
+  status: {
+    type: DataTypes.ENUM('active', 'inactive', 'pending', 'maintenance', 'faulty', 'retired'),
+    defaultValue: 'pending'
+  },
+  deviceType: {
+    type: DataTypes.ENUM('actuator', 'controller', 'gateway', 'sensor_hub', 'hybrid', 'other'),
+    defaultValue: 'actuator',
+    allowNull: false
+  },
+  communicationProtocol: {
+    type: DataTypes.ENUM('wifi', 'ble', 'lorawan', 'zigbee', 'modbus', 'mqtt', 'http', 'coap', 'other'),
+    allowNull: true
+  },
+  isCritical: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
+  },
+  lastHeartbeat: {
+    type: DataTypes.DATE,
+    allowNull: true
+  },
+  metadata: {
+    type: DataTypes.JSON,
+    allowNull: true
+  },
+  capabilities: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    comment: 'Device-specific capabilities and features'
+  },
+  controlModes: {
+    type: DataTypes.STRING(100),
+    allowNull: true,
+    comment: 'e.g., manual, remote, scheduled, sensor'
   }
 }, {
   tableName: 'Device',

@@ -13,6 +13,7 @@ const roleRoutes = require('./roleRoutes');
 const permissionRoutes = require('./permissionRoutes');
 const userRoleRoutes = require('./userRoleRoutes');
 const reportRoutes = require('./reportRoutes');
+const ruleChainRoutes = require('./ruleChainRoutes');
 const sequelize = require('../config/database');
 
 const router = express.Router();
@@ -829,6 +830,101 @@ router.get('/insomnia', localhostOnly, (req, res) => {
           limit: 20
         }
       }
+    ],
+    ruleChains: [
+      { 
+        method: 'GET', 
+        path: '/rule-chains', 
+        description: 'Get all rule chains', 
+        auth: true,
+        permissions: ['rule.view'],
+        query: {
+          organizationId: 1
+        }
+      },
+      { 
+        method: 'POST', 
+        path: '/rule-chains', 
+        description: 'Create a new rule chain', 
+        auth: true,
+        permissions: ['rule.create'],
+        params: {
+          name: "Rule Chain Name",
+          description: "Rule chain description",
+          organizationId: 1
+        }
+      },
+      { 
+        method: 'GET', 
+        path: '/rule-chains/:id', 
+        description: 'Get rule chain by ID', 
+        auth: true,
+        permissions: ['rule.view']
+      },
+      { 
+        method: 'PATCH', 
+        path: '/rule-chains/:id', 
+        description: 'Update rule chain', 
+        auth: true,
+        permissions: ['rule.update'],
+        params: {
+          name: "Updated Rule Chain Name",
+          description: "Updated description"
+        }
+      },
+      { 
+        method: 'DELETE', 
+        path: '/rule-chains/:id', 
+        description: 'Delete rule chain', 
+        auth: true,
+        permissions: ['rule.delete']
+      },
+      {
+        method: 'GET',
+        path: '/rule-chains/:ruleChainId/nodes',
+        description: 'Get all nodes in a rule chain',
+        auth: true,
+        permissions: ['rule.view']
+      },
+      {
+        method: 'POST',
+        path: '/rule-chains/nodes',
+        description: 'Create a new node in a rule chain',
+        auth: true,
+        permissions: ['rule.update'],
+        params: {
+          ruleChainId: 1,
+          type: "filter",
+          config: "{}",
+          nextNodeId: null
+        }
+      },
+      {
+        method: 'GET',
+        path: '/rule-chains/nodes/:id',
+        description: 'Get rule chain node by ID',
+        auth: true,
+        permissions: ['rule.view']
+      },
+      {
+        method: 'PATCH',
+        path: '/rule-chains/nodes/:id',
+        description: 'Update rule chain node',
+        auth: true,
+        permissions: ['rule.update'],
+        params: {
+          type: "filter",
+          config: "{}",
+          nextNodeId: null
+        }
+      },
+      {
+        method: 'DELETE',
+        path: '/rule-chains/nodes/:id',
+        description: 'Delete rule chain node',
+        auth: true,
+        permissions: ['rule.delete']
+      }
     ]
   };
   
@@ -1201,6 +1297,7 @@ router.use('/roles', roleRoutes);
 router.use('/permissions', permissionRoutes);
 router.use('/user-roles', userRoleRoutes);
 router.use('/reports', reportRoutes);
+router.use('/rule-chains', ruleChainRoutes);
 
 // Handle undefined routes
 router.all('*', (req, res) => {

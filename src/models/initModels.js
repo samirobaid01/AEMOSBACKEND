@@ -13,6 +13,7 @@ const Notification = require('./Notification');
 const OrganizationUser = require('./OrganizationUser');
 const PaymentCard = require('./PaymentCard');
 const RuleChain = require('./RuleChain');
+const RuleChainNode = require('./RuleChainNode');
 const TelemetryData = require('./TelemetryData');
 const Ticket = require('./Ticket');
 const DataStream = require('./DataStream');
@@ -67,6 +68,12 @@ const initAssociations = () => {
   
   // RuleChain associations
   RuleChain.belongsTo(Organization, { foreignKey: 'organizationId' });
+  RuleChain.hasMany(RuleChainNode, { foreignKey: 'ruleChainId', as: 'nodes' });
+
+  // RuleChainNode associations
+  RuleChainNode.belongsTo(RuleChain, { foreignKey: 'ruleChainId' });
+  RuleChainNode.belongsTo(RuleChainNode, { foreignKey: 'nextNodeId', as: 'nextNode' });
+  RuleChainNode.hasMany(RuleChainNode, { foreignKey: 'nextNodeId', as: 'previousNodes' });
   
   // TelemetryData associations
   TelemetryData.belongsTo(Sensor, { foreignKey: 'sensorId' });
@@ -133,6 +140,7 @@ module.exports = {
   OrganizationUser,
   PaymentCard,
   RuleChain,
+  RuleChainNode,
   TelemetryData,
   Ticket,
   DataStream,

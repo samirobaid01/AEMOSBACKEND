@@ -167,16 +167,16 @@ const deleteNode = async (req, res) => {
 const executeChain = async (req, res) => {
   try {
     const { id } = req.params;
-    const { sensorData } = req.body;
+    const data = req.body;
 
-    if (!sensorData) {
+    if (!data) {
       return res.status(400).json({
         status: 'error',
         message: 'Sensor data is required'
       });
     }
 
-    const result = await ruleChainService.execute(id, sensorData);
+    const result = await ruleChainService.execute(id, data);
     res.json({
       status: 'success',
       data: result

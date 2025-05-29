@@ -152,8 +152,18 @@ class RuleChainService {
   }
 
   // Rule Chain Execution
-  async execute(ruleChainId, sensorData) {
+  /**
+   * Executes a rule chain with the provided data
+   * @param {number} ruleChainId - The ID of the rule chain to execute
+   * @param {Object} rawData - Object containing arrays of sensor and device data
+   * @param {Array} rawData.sensorData - Array of sensor data objects with UUID
+   * @param {Array} rawData.deviceData - Array of device data objects with UUID
+   */
+  async execute(ruleChainId, rawData) {
     try {
+      // Transform arrays into maps for efficient lookup
+      const data = this._transformDataToMaps(rawData);
+
       // Get rule chain with nodes
       const ruleChain = await this.findChainById(ruleChainId);
       if (!ruleChain) throw new Error('Rule chain not found');
@@ -179,7 +189,7 @@ class RuleChainService {
 
         switch (nodeType) {
           case 'filter':
-            actionResult = this._evaluateCondition(sensorData, config);
+            actionResult = this._evaluateCondition(data, config);
             results.push({ 
               nodeId: currentNode.id, 
               type: 'filter', 
@@ -187,23 +197,22 @@ class RuleChainService {
               config 
             });
             if (!actionResult) {
-              // Stop execution on filter fail
               break;
             }
             break;
 
           case 'transform':
-            sensorData = this._transformData(sensorData, config);
+            data = this._transformData(data, config);
             results.push({ 
               nodeId: currentNode.id, 
               type: 'transform', 
-              newData: sensorData,
+              newData: data,
               config 
             });
             break;
 
           case 'action':
-            actionResult = await this._performAction(config, sensorData);
+            actionResult = await this._performAction(config, data);
             results.push({ 
               nodeId: currentNode.id, 
               type: 'action', 
@@ -221,72 +230,68 @@ class RuleChainService {
             });
         }
 
-        // Stop chain execution if filter failed
         if (nodeType === 'filter' && !actionResult) {
           break;
         }
 
-        // Move to next node
         currentNode = currentNode.nextNodeId ? nodesMap[currentNode.nextNodeId] : null;
       }
 
       return {
         ruleChainId,
         executedNodes: results,
-        finalSensorData: sensorData
+        finalData: data
       };
     } catch (error) {
       throw error;
     }
   }
 
+  /**
+   * Transforms array-based data into UUID-keyed maps
+   * @param {Object} rawData - The raw data with arrays
+   * @returns {Object} Transformed data with UUID maps
+   */
+  _transformDataToMaps(rawData) {
+    const transformArrayToMap = (array) => {
+      if (!Array.isArray(array)) return {};
+      return array.reduce((map, item) => {
+        if (item.UUID) {
+          map[item.UUID] = { ...item };
+          delete map[item.UUID].UUID; // Remove UUID from values since it's now the key
+        }
+        return map;
+      }, {});
+    };
+
+    return {
+      sensorData: transformArrayToMap(rawData.sensorData),
+      deviceData: transformArrayToMap(rawData.deviceData)
+    };
+  }
+
   // Helper methods for rule execution
   /**
-   * Evaluates filter conditions against sensor data
-   * @param {Object} sensorData - The sensor data to evaluate
+   * Evaluates filter conditions against provided data
+   * @param {Object} data - Combined sensor and device data maps
    * @param {Object} config - The filter configuration
    * 
-   * Supported Operators:
-   * Numeric Comparisons:
-   * - ">" : Greater than
-   * - ">=" : Greater than or equal
-   * - "<" : Less than
-   * - "<=" : Less than or equal
-   * - "==" : Equal to
-   * - "!=" : Not equal to
-   * - "between" : Value is between two numbers (inclusive), value should be [min, max]
-   * 
-   * String Operations:
-   * - "contains" : String contains value
-   * - "notContains" : String does not contain value
-   * - "startsWith" : String starts with value
-   * - "endsWith" : String ends with value
-   * - "matches" : String matches regular expression
-   * 
-   * Array Operations:
-   * - "in" : Value is in array
-   * - "notIn" : Value is not in array
-   * - "hasAll" : Array contains all values
-   * - "hasAny" : Array contains any of the values
-   * - "hasNone" : Array contains none of the values
-   * - "isEmpty" : Array or string is empty
-   * - "isNotEmpty" : Array or string is not empty
-   * 
-   * Type Checks:
-   * - "isNull" : Value is null
-   * - "isNotNull" : Value is not null
-   * - "isNumber" : Value is a number
-   * - "isString" : Value is a string
-   * - "isBoolean" : Value is a boolean
-   * - "isArray" : Value is an array
-   * 
-   * Time Operations:
-   * - "olderThan" : Timestamp is older than value (in seconds)
-   * - "newerThan" : Timestamp is newer than value (in seconds)
-   * - "inLast" : Timestamp is within last n seconds
-   * 
-   * Simple Expression Format:
+   * Input Data Format:
    * {
+   *   sensorData: {
+   *     "aaabbb123": { temperature: 32 },
+   *     "cccddd456": { motion: true }
+   *   },
+   *   deviceData: {
+   *     "eeefff789": { power: "on" },
+   *     "ggghhh101112": { speed: "high" }
+   *   }
+   * }
+   * 
+   * Expression Format:
+   * {
+   *   sourceType: "sensor",
+   *   UUID: "aaabbb123",
    *   key: "temperature",
    *   operator: ">",
    *   value: 30
@@ -295,13 +300,40 @@ class RuleChainService {
    * Complex Expression Format (Nested AND/OR):
    * {
    *   type: "AND",
-   *   expressions: [...]
+   *   expressions: [
+   *     {
+   *       sourceType: "sensor",
+   *       UUID: "123",
+   *       key: "temperature",
+   *       operator: ">",
+   *       value: 30
+   *     },
+   *     {
+   *       type: "OR",
+   *       expressions: [
+   *         {
+   *           sourceType: "sensor",
+   *           UUID: "456",
+   *           key: "motion",
+   *           operator: "==",
+   *           value: true
+   *         },
+   *         {
+   *           sourceType: "device",
+   *           UUID: "789",
+   *           key: "power",
+   *           operator: "==",
+   *           value: "on"
+   *         }
+   *       ]
+   *     }
+   *   ]
    * }
    */
-  _evaluateCondition(sensorData, config) {
+  _evaluateCondition(data, config) {
     // Handle complex expressions (AND/OR)
     if (config.type && config.expressions) {
-      const results = config.expressions.map(expr => this._evaluateCondition(sensorData, expr));
+      const results = config.expressions.map(expr => this._evaluateCondition(data, expr));
       
       switch (config.type.toUpperCase()) {
         case 'AND':
@@ -314,103 +346,116 @@ class RuleChainService {
     }
 
     // Handle simple expression
-    const { key, operator, value } = config;
-    const sensorValue = sensorData[key];
-
-    // Special operators that don't need sensorValue to be defined
-    switch (operator) {
-      case 'isNull':
-        return sensorValue === null || sensorValue === undefined;
-      case 'isNotNull':
-        return sensorValue !== null && sensorValue !== undefined;
-      case 'isEmpty':
-        return !sensorValue || (Array.isArray(sensorValue) && sensorValue.length === 0) || sensorValue === '';
-      case 'isNotEmpty':
-        return sensorValue && (!Array.isArray(sensorValue) || sensorValue.length > 0) && sensorValue !== '';
+    const { sourceType, UUID, key, operator, value } = config;
+    
+    // Get the appropriate data source
+    const sourceMap = sourceType === 'sensor' ? data.sensorData : data.deviceData;
+    if (!sourceMap) {
+      return false;
     }
 
-    // Handle undefined or null sensor values for other operators
-    if (sensorValue === undefined || sensorValue === null) {
+    // Get the specific source instance by UUID
+    const sourceInstance = sourceMap[UUID];
+    if (!sourceInstance) {
+      return false;
+    }
+
+    const sourceValue = sourceInstance[key];
+
+    // Special operators that don't need sourceValue to be defined
+    switch (operator) {
+      case 'isNull':
+        return sourceValue === null || sourceValue === undefined;
+      case 'isNotNull':
+        return sourceValue !== null && sourceValue !== undefined;
+      case 'isEmpty':
+        return !sourceValue || (Array.isArray(sourceValue) && sourceValue.length === 0) || sourceValue === '';
+      case 'isNotEmpty':
+        return sourceValue && (!Array.isArray(sourceValue) || sourceValue.length > 0) && sourceValue !== '';
+    }
+
+    // Handle undefined or null source values for other operators
+    if (sourceValue === undefined || sourceValue === null) {
       return false;
     }
 
     // Type check operators
     switch (operator) {
       case 'isNumber':
-        return typeof sensorValue === 'number' && !isNaN(sensorValue);
+        return typeof sourceValue === 'number' && !isNaN(sourceValue);
       case 'isString':
-        return typeof sensorValue === 'string';
+        return typeof sourceValue === 'string';
       case 'isBoolean':
-        return typeof sensorValue === 'boolean';
+        return typeof sourceValue === 'boolean';
       case 'isArray':
-        return Array.isArray(sensorValue);
+        return Array.isArray(sourceValue);
     }
 
     // Main operator switch
     switch (operator) {
       // Numeric comparisons
-      case '>': return sensorValue > value;
-      case '>=': return sensorValue >= value;
-      case '<': return sensorValue < value;
-      case '<=': return sensorValue <= value;
-      case '==': return sensorValue == value;
-      case '!=': return sensorValue != value;
+      case '>': return sourceValue > value;
+      case '>=': return sourceValue >= value;
+      case '<': return sourceValue < value;
+      case '<=': return sourceValue <= value;
+      case '==': return sourceValue == value;
+      case '!=': return sourceValue != value;
       case 'between': 
         return Array.isArray(value) && 
                value.length === 2 && 
-               sensorValue >= value[0] && 
-               sensorValue <= value[1];
+               sourceValue >= value[0] && 
+               sourceValue <= value[1];
 
       // String operations
       case 'contains': 
-        return String(sensorValue).includes(String(value));
+        return String(sourceValue).includes(String(value));
       case 'notContains': 
-        return !String(sensorValue).includes(String(value));
+        return !String(sourceValue).includes(String(value));
       case 'startsWith': 
-        return String(sensorValue).startsWith(String(value));
+        return String(sourceValue).startsWith(String(value));
       case 'endsWith': 
-        return String(sensorValue).endsWith(String(value));
+        return String(sourceValue).endsWith(String(value));
       case 'matches': 
         try {
           const regex = new RegExp(value);
-          return regex.test(String(sensorValue));
+          return regex.test(String(sourceValue));
         } catch (e) {
           throw new Error(`Invalid regular expression: ${value}`);
         }
 
       // Array operations
       case 'in': 
-        return Array.isArray(value) && value.includes(sensorValue);
+        return Array.isArray(value) && value.includes(sourceValue);
       case 'notIn': 
-        return Array.isArray(value) && !value.includes(sensorValue);
+        return Array.isArray(value) && !value.includes(sourceValue);
       case 'hasAll': 
-        return Array.isArray(sensorValue) && 
+        return Array.isArray(sourceValue) && 
                Array.isArray(value) && 
-               value.every(v => sensorValue.includes(v));
+               value.every(v => sourceValue.includes(v));
       case 'hasAny': 
-        return Array.isArray(sensorValue) && 
+        return Array.isArray(sourceValue) && 
                Array.isArray(value) && 
-               value.some(v => sensorValue.includes(v));
+               value.some(v => sourceValue.includes(v));
       case 'hasNone': 
-        return Array.isArray(sensorValue) && 
+        return Array.isArray(sourceValue) && 
                Array.isArray(value) && 
-               !value.some(v => sensorValue.includes(v));
+               !value.some(v => sourceValue.includes(v));
 
       // Time operations
       case 'olderThan': {
-        const sensorTime = new Date(sensorValue).getTime();
+        const sourceTime = new Date(sourceValue).getTime();
         const compareTime = Date.now() - (value * 1000); // value in seconds
-        return sensorTime < compareTime;
+        return sourceTime < compareTime;
       }
       case 'newerThan': {
-        const sensorTime = new Date(sensorValue).getTime();
+        const sourceTime = new Date(sourceValue).getTime();
         const compareTime = Date.now() - (value * 1000); // value in seconds
-        return sensorTime > compareTime;
+        return sourceTime > compareTime;
       }
       case 'inLast': {
-        const sensorTime = new Date(sensorValue).getTime();
+        const sourceTime = new Date(sourceValue).getTime();
         const compareTime = Date.now() - (value * 1000); // value in seconds
-        return sensorTime >= compareTime;
+        return sourceTime >= compareTime;
       }
 
       default:

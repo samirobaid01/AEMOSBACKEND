@@ -150,6 +150,137 @@ class RuleChainService {
       throw error;
     }
   }
+
+  // Rule Chain Execution
+  async execute(ruleChainId, sensorData) {
+    try {
+      // Get rule chain with nodes
+      const ruleChain = await this.findChainById(ruleChainId);
+      if (!ruleChain) throw new Error('Rule chain not found');
+      if (!ruleChain.nodes || ruleChain.nodes.length === 0) {
+        return { result: 'No nodes to execute' };
+      }
+
+      // Map nodes by id for quick lookup
+      const nodesMap = {};
+      ruleChain.nodes.forEach(node => {
+        nodesMap[node.id] = node;
+      });
+
+      // Start with first node
+      let currentNode = ruleChain.nodes[0];
+      const results = [];
+
+      // Execute nodes sequentially
+      while (currentNode) {
+        const nodeType = currentNode.type;
+        const config = JSON.parse(currentNode.config || '{}');
+        let actionResult;
+
+        switch (nodeType) {
+          case 'filter':
+            actionResult = this._evaluateCondition(sensorData, config);
+            results.push({ 
+              nodeId: currentNode.id, 
+              type: 'filter', 
+              passed: actionResult,
+              config 
+            });
+            if (!actionResult) {
+              // Stop execution on filter fail
+              break;
+            }
+            break;
+
+          case 'transform':
+            sensorData = this._transformData(sensorData, config);
+            results.push({ 
+              nodeId: currentNode.id, 
+              type: 'transform', 
+              newData: sensorData,
+              config 
+            });
+            break;
+
+          case 'action':
+            actionResult = await this._performAction(config, sensorData);
+            results.push({ 
+              nodeId: currentNode.id, 
+              type: 'action', 
+              actionResult,
+              config 
+            });
+            break;
+
+          default:
+            results.push({ 
+              nodeId: currentNode.id, 
+              type: 'unknown', 
+              message: 'Unknown node type',
+              config 
+            });
+        }
+
+        // Stop chain execution if filter failed
+        if (nodeType === 'filter' && !actionResult) {
+          break;
+        }
+
+        // Move to next node
+        currentNode = currentNode.nextNodeId ? nodesMap[currentNode.nextNodeId] : null;
+      }
+
+      return {
+        ruleChainId,
+        executedNodes: results,
+        finalSensorData: sensorData
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // Helper methods for rule execution
+  _evaluateCondition(sensorData, config) {
+    const { key, operator, value } = config;
+    const sensorValue = sensorData[key];
+
+    switch (operator) {
+      case '>': return sensorValue > value;
+      case '>=': return sensorValue >= value;
+      case '<': return sensorValue < value;
+      case '<=': return sensorValue <= value;
+      case '==': return sensorValue == value;
+      case '!=': return sensorValue != value;
+      default: return false;
+    }
+  }
+
+  _transformData(sensorData, config) {
+    const { key, operation, operand } = config;
+    let val = sensorData[key];
+
+    switch (operation) {
+      case 'multiply': val *= operand; break;
+      case 'add': val += operand; break;
+      case 'subtract': val -= operand; break;
+      case 'divide': val /= operand; break;
+      default: break;
+    }
+
+    return { ...sensorData, [key]: val };
+  }
+
+  async _performAction(config, sensorData) {
+    // For now, just simulate action execution
+    // In real implementation, this would integrate with device control system
+    return {
+      status: 'success',
+      commandSent: config.command || null,
+      timestamp: new Date().toISOString(),
+      sensorData
+    };
+  }
 }
 
 module.exports = {

@@ -164,6 +164,31 @@ const deleteNode = async (req, res) => {
   }
 };
 
+const executeChain = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { sensorData } = req.body;
+
+    if (!sensorData) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Sensor data is required'
+      });
+    }
+
+    const result = await ruleChainService.execute(id, sensorData);
+    res.json({
+      status: 'success',
+      data: result
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      message: error.message
+    });
+  }
+};
+
 // RuleChain routes
 router
   .route('/')
@@ -236,5 +261,14 @@ router
     checkResourceOwnership(getRuleChainForOwnershipCheck),
     deleteNode
   );
+
+// Execute route
+router.post(
+  '/:id/execute',
+  authenticate,
+  checkPermission('rule.update'),
+  checkResourceOwnership(getRuleChainForOwnershipCheck),
+  executeChain
+);
 
 module.exports = router;

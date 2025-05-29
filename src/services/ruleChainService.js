@@ -241,18 +241,180 @@ class RuleChainService {
   }
 
   // Helper methods for rule execution
+  /**
+   * Evaluates filter conditions against sensor data
+   * @param {Object} sensorData - The sensor data to evaluate
+   * @param {Object} config - The filter configuration
+   * 
+   * Supported Operators:
+   * Numeric Comparisons:
+   * - ">" : Greater than
+   * - ">=" : Greater than or equal
+   * - "<" : Less than
+   * - "<=" : Less than or equal
+   * - "==" : Equal to
+   * - "!=" : Not equal to
+   * - "between" : Value is between two numbers (inclusive), value should be [min, max]
+   * 
+   * String Operations:
+   * - "contains" : String contains value
+   * - "notContains" : String does not contain value
+   * - "startsWith" : String starts with value
+   * - "endsWith" : String ends with value
+   * - "matches" : String matches regular expression
+   * 
+   * Array Operations:
+   * - "in" : Value is in array
+   * - "notIn" : Value is not in array
+   * - "hasAll" : Array contains all values
+   * - "hasAny" : Array contains any of the values
+   * - "hasNone" : Array contains none of the values
+   * - "isEmpty" : Array or string is empty
+   * - "isNotEmpty" : Array or string is not empty
+   * 
+   * Type Checks:
+   * - "isNull" : Value is null
+   * - "isNotNull" : Value is not null
+   * - "isNumber" : Value is a number
+   * - "isString" : Value is a string
+   * - "isBoolean" : Value is a boolean
+   * - "isArray" : Value is an array
+   * 
+   * Time Operations:
+   * - "olderThan" : Timestamp is older than value (in seconds)
+   * - "newerThan" : Timestamp is newer than value (in seconds)
+   * - "inLast" : Timestamp is within last n seconds
+   * 
+   * Simple Expression Format:
+   * {
+   *   key: "temperature",
+   *   operator: ">",
+   *   value: 30
+   * }
+   * 
+   * Complex Expression Format (Nested AND/OR):
+   * {
+   *   type: "AND",
+   *   expressions: [...]
+   * }
+   */
   _evaluateCondition(sensorData, config) {
+    // Handle complex expressions (AND/OR)
+    if (config.type && config.expressions) {
+      const results = config.expressions.map(expr => this._evaluateCondition(sensorData, expr));
+      
+      switch (config.type.toUpperCase()) {
+        case 'AND':
+          return results.every(Boolean);
+        case 'OR':
+          return results.some(Boolean);
+        default:
+          throw new Error(`Unknown expression type: ${config.type}`);
+      }
+    }
+
+    // Handle simple expression
     const { key, operator, value } = config;
     const sensorValue = sensorData[key];
 
+    // Special operators that don't need sensorValue to be defined
     switch (operator) {
+      case 'isNull':
+        return sensorValue === null || sensorValue === undefined;
+      case 'isNotNull':
+        return sensorValue !== null && sensorValue !== undefined;
+      case 'isEmpty':
+        return !sensorValue || (Array.isArray(sensorValue) && sensorValue.length === 0) || sensorValue === '';
+      case 'isNotEmpty':
+        return sensorValue && (!Array.isArray(sensorValue) || sensorValue.length > 0) && sensorValue !== '';
+    }
+
+    // Handle undefined or null sensor values for other operators
+    if (sensorValue === undefined || sensorValue === null) {
+      return false;
+    }
+
+    // Type check operators
+    switch (operator) {
+      case 'isNumber':
+        return typeof sensorValue === 'number' && !isNaN(sensorValue);
+      case 'isString':
+        return typeof sensorValue === 'string';
+      case 'isBoolean':
+        return typeof sensorValue === 'boolean';
+      case 'isArray':
+        return Array.isArray(sensorValue);
+    }
+
+    // Main operator switch
+    switch (operator) {
+      // Numeric comparisons
       case '>': return sensorValue > value;
       case '>=': return sensorValue >= value;
       case '<': return sensorValue < value;
       case '<=': return sensorValue <= value;
       case '==': return sensorValue == value;
       case '!=': return sensorValue != value;
-      default: return false;
+      case 'between': 
+        return Array.isArray(value) && 
+               value.length === 2 && 
+               sensorValue >= value[0] && 
+               sensorValue <= value[1];
+
+      // String operations
+      case 'contains': 
+        return String(sensorValue).includes(String(value));
+      case 'notContains': 
+        return !String(sensorValue).includes(String(value));
+      case 'startsWith': 
+        return String(sensorValue).startsWith(String(value));
+      case 'endsWith': 
+        return String(sensorValue).endsWith(String(value));
+      case 'matches': 
+        try {
+          const regex = new RegExp(value);
+          return regex.test(String(sensorValue));
+        } catch (e) {
+          throw new Error(`Invalid regular expression: ${value}`);
+        }
+
+      // Array operations
+      case 'in': 
+        return Array.isArray(value) && value.includes(sensorValue);
+      case 'notIn': 
+        return Array.isArray(value) && !value.includes(sensorValue);
+      case 'hasAll': 
+        return Array.isArray(sensorValue) && 
+               Array.isArray(value) && 
+               value.every(v => sensorValue.includes(v));
+      case 'hasAny': 
+        return Array.isArray(sensorValue) && 
+               Array.isArray(value) && 
+               value.some(v => sensorValue.includes(v));
+      case 'hasNone': 
+        return Array.isArray(sensorValue) && 
+               Array.isArray(value) && 
+               !value.some(v => sensorValue.includes(v));
+
+      // Time operations
+      case 'olderThan': {
+        const sensorTime = new Date(sensorValue).getTime();
+        const compareTime = Date.now() - (value * 1000); // value in seconds
+        return sensorTime < compareTime;
+      }
+      case 'newerThan': {
+        const sensorTime = new Date(sensorValue).getTime();
+        const compareTime = Date.now() - (value * 1000); // value in seconds
+        return sensorTime > compareTime;
+      }
+      case 'inLast': {
+        const sensorTime = new Date(sensorValue).getTime();
+        const compareTime = Date.now() - (value * 1000); // value in seconds
+        return sensorTime >= compareTime;
+      }
+
+      default:
+        throw new Error(`Unknown operator: ${operator}`);
     }
   }
 

@@ -1,4 +1,4 @@
-const { RuleChain, RuleChainNode } = require('../models/initModels');
+const { RuleChain, RuleChainNode, Sensor, Device, TelemetryData, DataStream, DeviceState, DeviceStateInstance } = require('../models/initModels');
 
 // Ownership check function for middleware
 const getRuleChainForOwnershipCheck = async (id) => {
@@ -487,6 +487,192 @@ class RuleChainService {
       timestamp: new Date().toISOString(),
       sensorData
     };
+  }
+
+  /**
+   * Recursively extracts data requirements from rule expressions
+   * @param {Object} expression - Rule expression object
+   * @param {Map} sensorReqs - Map to collect sensor requirements
+   * @param {Map} deviceReqs - Map to collect device requirements
+   */
+  _extractRequirements(expression, sensorReqs, deviceReqs) {
+    if (expression.type && expression.expressions) {
+      // Handle nested AND/OR expressions
+      expression.expressions.forEach(expr => 
+        this._extractRequirements(expr, sensorReqs, deviceReqs)
+      );
+    } else {
+      // Handle leaf node (actual condition)
+      const { sourceType, UUID, key } = expression;
+      if (!UUID || !key) return;
+
+      if (sourceType === 'sensor') {
+        if (!sensorReqs.has(UUID)) {
+          sensorReqs.set(UUID, new Set());
+        }
+        sensorReqs.get(UUID).add(key);
+      } else if (sourceType === 'device') {
+        if (!deviceReqs.has(UUID)) {
+          deviceReqs.set(UUID, new Set());
+        }
+        deviceReqs.get(UUID).add(key);
+      }
+    }
+  }
+
+  /**
+   * Collects latest sensor values based on requirements
+   * @param {Map} sensorReqs - Map of sensor UUIDs to required parameters
+   * @returns {Array} Array of sensor data objects
+   */
+  async _collectSensorData(sensorReqs) {
+    const sensorData = [];
+    
+    for (const [UUID, parameters] of sensorReqs) {
+      try {
+        const sensor = await Sensor.findOne({ where: { UUID } });
+        if (!sensor) continue;
+
+        const sensorDataObject = { UUID };
+        
+        for (const param of parameters) {
+          const telemetry = await TelemetryData.findOne({
+            where: { 
+              sensorId: sensor.id,
+              variableName: param
+            }
+          });
+          
+          if (telemetry) {
+            const latestStream = await DataStream.findOne({
+              where: { telemetryDataId: telemetry.id },
+              order: [['recievedAt', 'DESC']],
+              limit: 1
+            });
+            
+            if (latestStream) {
+              // Convert value based on telemetry datatype
+              let value = latestStream.value;
+              switch (telemetry.datatype) {
+                case 'number':
+                  value = Number(value);
+                  break;
+                case 'boolean':
+                  value = value.toLowerCase() === 'true';
+                  break;
+                // String and other types remain as is
+              }
+              sensorDataObject[param] = value;
+            }
+          }
+        }
+
+        if (Object.keys(sensorDataObject).length > 1) { // > 1 because UUID is always there
+          sensorData.push(sensorDataObject);
+        }
+      } catch (error) {
+        console.error(`Error collecting sensor data for UUID ${UUID}:`, error);
+        // Continue with next sensor
+      }
+    }
+
+    return sensorData;
+  }
+
+  /**
+   * Collects latest device state values based on requirements
+   * @param {Map} deviceReqs - Map of device UUIDs to required parameters
+   * @returns {Array} Array of device data objects
+   */
+  async _collectDeviceData(deviceReqs) {
+    const deviceData = [];
+    
+    for (const [UUID, parameters] of deviceReqs) {
+      try {
+        const device = await Device.findOne({ where: { UUID } });
+        if (!device) continue;
+
+        const deviceDataObject = { UUID };
+        
+        for (const param of parameters) {
+          const state = await DeviceState.findOne({
+            where: {
+              deviceId: device.id,
+              stateName: param
+            }
+          });
+          
+          if (state) {
+            const latestInstance = await DeviceStateInstance.findOne({
+              where: { deviceStateId: state.id },
+              order: [['fromTimestamp', 'DESC']],
+              limit: 1
+            });
+            
+            if (latestInstance) {
+              deviceDataObject[param] = latestInstance.value;
+            }
+          }
+        }
+
+        if (Object.keys(deviceDataObject).length > 1) { // > 1 because UUID is always there
+          deviceData.push(deviceDataObject);
+        }
+      } catch (error) {
+        console.error(`Error collecting device data for UUID ${UUID}:`, error);
+        // Continue with next device
+      }
+    }
+
+    return deviceData;
+  }
+
+  /**
+   * Triggers rule chain execution by automatically collecting required data
+   * @param {number} ruleChainId - The ID of the rule chain to execute
+   * @returns {Promise} Result of rule chain execution
+   */
+  async trigger(ruleChainId, organizationId) {
+    try {
+      // 1. Get rule chain nodes
+      const nodes = await RuleChainNode.findAll({
+        where: { ruleChainId }
+      });
+
+      if (!nodes || nodes.length === 0) {
+        throw new Error('No nodes found for rule chain');
+      }
+
+      // 2. Extract data requirements from node configs
+      const sensorReqs = new Map();
+      const deviceReqs = new Map();
+
+      for (const node of nodes) {
+        try {
+          const config = JSON.parse(node.config || '{}');
+          this._extractRequirements(config, sensorReqs, deviceReqs);
+        } catch (error) {
+          console.error(`Error parsing config for node ${node.id}:`, error);
+          // Continue with next node
+        }
+      }
+
+      // 3. Collect required data
+      const [sensorData, deviceData] = await Promise.all([
+        this._collectSensorData(sensorReqs),
+        this._collectDeviceData(deviceReqs)
+      ]);
+
+      // 4. Execute rule chain with collected data
+      const rawData = {
+        sensorData,
+        deviceData
+      };
+
+      return this.execute(ruleChainId, rawData);
+    } catch (error) {
+      throw new Error(`Rule chain trigger failed: ${error.message}`);
+    }
   }
 }
 

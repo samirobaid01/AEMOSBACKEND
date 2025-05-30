@@ -189,6 +189,23 @@ const executeChain = async (req, res) => {
   }
 };
 
+const triggerChain = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { organizationId } = req.query;
+    const result = await ruleChainService.trigger(id, organizationId);
+    res.json({
+      status: 'success',
+      data: result
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      message: error.message
+    });
+  }
+};
+
 // RuleChain routes
 router
   .route('/')
@@ -269,6 +286,15 @@ router.post(
   checkPermission('rule.update'),
   checkResourceOwnership(getRuleChainForOwnershipCheck),
   executeChain
+);
+
+// Trigger route
+router.post(
+  '/:id/trigger',
+  authenticate,
+  checkPermission('rule.update'),
+  checkResourceOwnership(getRuleChainForOwnershipCheck),
+  triggerChain
 );
 
 module.exports = router;

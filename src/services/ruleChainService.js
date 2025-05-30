@@ -1,4 +1,13 @@
-const { RuleChain, RuleChainNode, Sensor, Device, TelemetryData, DataStream, DeviceState, DeviceStateInstance } = require('../models/initModels');
+const {
+  RuleChain,
+  RuleChainNode,
+  Sensor,
+  Device,
+  TelemetryData,
+  DataStream,
+  DeviceState,
+  DeviceStateInstance,
+} = require('../models/initModels');
 
 // Ownership check function for middleware
 const getRuleChainForOwnershipCheck = async (id) => {
@@ -173,7 +182,7 @@ class RuleChainService {
 
       // Map nodes by id for quick lookup
       const nodesMap = {};
-      ruleChain.nodes.forEach(node => {
+      ruleChain.nodes.forEach((node) => {
         nodesMap[node.id] = node;
       });
 
@@ -190,11 +199,11 @@ class RuleChainService {
         switch (nodeType) {
           case 'filter':
             actionResult = this._evaluateCondition(data, config);
-            results.push({ 
-              nodeId: currentNode.id, 
-              type: 'filter', 
+            results.push({
+              nodeId: currentNode.id,
+              type: 'filter',
               passed: actionResult,
-              config 
+              config,
             });
             if (!actionResult) {
               break;
@@ -203,30 +212,30 @@ class RuleChainService {
 
           case 'transform':
             data = this._transformData(data, config);
-            results.push({ 
-              nodeId: currentNode.id, 
-              type: 'transform', 
+            results.push({
+              nodeId: currentNode.id,
+              type: 'transform',
               newData: data,
-              config 
+              config,
             });
             break;
 
           case 'action':
             actionResult = await this._performAction(config, data);
-            results.push({ 
-              nodeId: currentNode.id, 
-              type: 'action', 
+            results.push({
+              nodeId: currentNode.id,
+              type: 'action',
               actionResult,
-              config 
+              config,
             });
             break;
 
           default:
-            results.push({ 
-              nodeId: currentNode.id, 
-              type: 'unknown', 
+            results.push({
+              nodeId: currentNode.id,
+              type: 'unknown',
               message: 'Unknown node type',
-              config 
+              config,
             });
         }
 
@@ -240,7 +249,7 @@ class RuleChainService {
       return {
         ruleChainId,
         executedNodes: results,
-        finalData: data
+        finalData: data,
       };
     } catch (error) {
       throw error;
@@ -266,7 +275,7 @@ class RuleChainService {
 
     return {
       sensorData: transformArrayToMap(rawData.sensorData),
-      deviceData: transformArrayToMap(rawData.deviceData)
+      deviceData: transformArrayToMap(rawData.deviceData),
     };
   }
 
@@ -275,7 +284,7 @@ class RuleChainService {
    * Evaluates filter conditions against provided data
    * @param {Object} data - Combined sensor and device data maps
    * @param {Object} config - The filter configuration
-   * 
+   *
    * Input Data Format:
    * {
    *   sensorData: {
@@ -287,7 +296,7 @@ class RuleChainService {
    *     "ggghhh101112": { speed: "high" }
    *   }
    * }
-   * 
+   *
    * Expression Format:
    * {
    *   sourceType: "sensor",
@@ -296,7 +305,7 @@ class RuleChainService {
    *   operator: ">",
    *   value: 30
    * }
-   * 
+   *
    * Complex Expression Format (Nested AND/OR):
    * {
    *   type: "AND",
@@ -333,8 +342,8 @@ class RuleChainService {
   _evaluateCondition(data, config) {
     // Handle complex expressions (AND/OR)
     if (config.type && config.expressions) {
-      const results = config.expressions.map(expr => this._evaluateCondition(data, expr));
-      
+      const results = config.expressions.map((expr) => this._evaluateCondition(data, expr));
+
       switch (config.type.toUpperCase()) {
         case 'AND':
           return results.every(Boolean);
@@ -347,7 +356,7 @@ class RuleChainService {
 
     // Handle simple expression
     const { sourceType, UUID, key, operator, value } = config;
-    
+
     // Get the appropriate data source
     const sourceMap = sourceType === 'sensor' ? data.sensorData : data.deviceData;
     if (!sourceMap) {
@@ -369,9 +378,17 @@ class RuleChainService {
       case 'isNotNull':
         return sourceValue !== null && sourceValue !== undefined;
       case 'isEmpty':
-        return !sourceValue || (Array.isArray(sourceValue) && sourceValue.length === 0) || sourceValue === '';
+        return (
+          !sourceValue ||
+          (Array.isArray(sourceValue) && sourceValue.length === 0) ||
+          sourceValue === ''
+        );
       case 'isNotEmpty':
-        return sourceValue && (!Array.isArray(sourceValue) || sourceValue.length > 0) && sourceValue !== '';
+        return (
+          sourceValue &&
+          (!Array.isArray(sourceValue) || sourceValue.length > 0) &&
+          sourceValue !== ''
+        );
     }
 
     // Handle undefined or null source values for other operators
@@ -394,28 +411,36 @@ class RuleChainService {
     // Main operator switch
     switch (operator) {
       // Numeric comparisons
-      case '>': return sourceValue > value;
-      case '>=': return sourceValue >= value;
-      case '<': return sourceValue < value;
-      case '<=': return sourceValue <= value;
-      case '==': return sourceValue == value;
-      case '!=': return sourceValue != value;
-      case 'between': 
-        return Array.isArray(value) && 
-               value.length === 2 && 
-               sourceValue >= value[0] && 
-               sourceValue <= value[1];
+      case '>':
+        return sourceValue > value;
+      case '>=':
+        return sourceValue >= value;
+      case '<':
+        return sourceValue < value;
+      case '<=':
+        return sourceValue <= value;
+      case '==':
+        return sourceValue == value;
+      case '!=':
+        return sourceValue != value;
+      case 'between':
+        return (
+          Array.isArray(value) &&
+          value.length === 2 &&
+          sourceValue >= value[0] &&
+          sourceValue <= value[1]
+        );
 
       // String operations
-      case 'contains': 
+      case 'contains':
         return String(sourceValue).includes(String(value));
-      case 'notContains': 
+      case 'notContains':
         return !String(sourceValue).includes(String(value));
-      case 'startsWith': 
+      case 'startsWith':
         return String(sourceValue).startsWith(String(value));
-      case 'endsWith': 
+      case 'endsWith':
         return String(sourceValue).endsWith(String(value));
-      case 'matches': 
+      case 'matches':
         try {
           const regex = new RegExp(value);
           return regex.test(String(sourceValue));
@@ -424,37 +449,43 @@ class RuleChainService {
         }
 
       // Array operations
-      case 'in': 
+      case 'in':
         return Array.isArray(value) && value.includes(sourceValue);
-      case 'notIn': 
+      case 'notIn':
         return Array.isArray(value) && !value.includes(sourceValue);
-      case 'hasAll': 
-        return Array.isArray(sourceValue) && 
-               Array.isArray(value) && 
-               value.every(v => sourceValue.includes(v));
-      case 'hasAny': 
-        return Array.isArray(sourceValue) && 
-               Array.isArray(value) && 
-               value.some(v => sourceValue.includes(v));
-      case 'hasNone': 
-        return Array.isArray(sourceValue) && 
-               Array.isArray(value) && 
-               !value.some(v => sourceValue.includes(v));
+      case 'hasAll':
+        return (
+          Array.isArray(sourceValue) &&
+          Array.isArray(value) &&
+          value.every((v) => sourceValue.includes(v))
+        );
+      case 'hasAny':
+        return (
+          Array.isArray(sourceValue) &&
+          Array.isArray(value) &&
+          value.some((v) => sourceValue.includes(v))
+        );
+      case 'hasNone':
+        return (
+          Array.isArray(sourceValue) &&
+          Array.isArray(value) &&
+          !value.some((v) => sourceValue.includes(v))
+        );
 
       // Time operations
       case 'olderThan': {
         const sourceTime = new Date(sourceValue).getTime();
-        const compareTime = Date.now() - (value * 1000); // value in seconds
+        const compareTime = Date.now() - value * 1000; // value in seconds
         return sourceTime < compareTime;
       }
       case 'newerThan': {
         const sourceTime = new Date(sourceValue).getTime();
-        const compareTime = Date.now() - (value * 1000); // value in seconds
+        const compareTime = Date.now() - value * 1000; // value in seconds
         return sourceTime > compareTime;
       }
       case 'inLast': {
         const sourceTime = new Date(sourceValue).getTime();
-        const compareTime = Date.now() - (value * 1000); // value in seconds
+        const compareTime = Date.now() - value * 1000; // value in seconds
         return sourceTime >= compareTime;
       }
 
@@ -468,11 +499,20 @@ class RuleChainService {
     let val = sensorData[key];
 
     switch (operation) {
-      case 'multiply': val *= operand; break;
-      case 'add': val += operand; break;
-      case 'subtract': val -= operand; break;
-      case 'divide': val /= operand; break;
-      default: break;
+      case 'multiply':
+        val *= operand;
+        break;
+      case 'add':
+        val += operand;
+        break;
+      case 'subtract':
+        val -= operand;
+        break;
+      case 'divide':
+        val /= operand;
+        break;
+      default:
+        break;
     }
 
     return { ...sensorData, [key]: val };
@@ -485,7 +525,7 @@ class RuleChainService {
       status: 'success',
       commandSent: config.command || null,
       timestamp: new Date().toISOString(),
-      sensorData
+      sensorData,
     };
   }
 
@@ -498,7 +538,7 @@ class RuleChainService {
   _extractRequirements(expression, sensorReqs, deviceReqs) {
     if (expression.type && expression.expressions) {
       // Handle nested AND/OR expressions
-      expression.expressions.forEach(expr => 
+      expression.expressions.forEach((expr) =>
         this._extractRequirements(expr, sensorReqs, deviceReqs)
       );
     } else {
@@ -527,29 +567,29 @@ class RuleChainService {
    */
   async _collectSensorData(sensorReqs) {
     const sensorData = [];
-    
+
     for (const [UUID, parameters] of sensorReqs) {
       try {
         const sensor = await Sensor.findOne({ where: { UUID } });
         if (!sensor) continue;
 
         const sensorDataObject = { UUID };
-        
+
         for (const param of parameters) {
           const telemetry = await TelemetryData.findOne({
-            where: { 
+            where: {
               sensorId: sensor.id,
-              variableName: param
-            }
+              variableName: param,
+            },
           });
-          
+
           if (telemetry) {
             const latestStream = await DataStream.findOne({
               where: { telemetryDataId: telemetry.id },
               order: [['recievedAt', 'DESC']],
-              limit: 1
+              limit: 1,
             });
-            
+
             if (latestStream) {
               // Convert value based on telemetry datatype
               let value = latestStream.value;
@@ -567,7 +607,8 @@ class RuleChainService {
           }
         }
 
-        if (Object.keys(sensorDataObject).length > 1) { // > 1 because UUID is always there
+        if (Object.keys(sensorDataObject).length > 1) {
+          // > 1 because UUID is always there
           sensorData.push(sensorDataObject);
         }
       } catch (error) {
@@ -586,36 +627,37 @@ class RuleChainService {
    */
   async _collectDeviceData(deviceReqs) {
     const deviceData = [];
-    
+
     for (const [UUID, parameters] of deviceReqs) {
       try {
         const device = await Device.findOne({ where: { UUID } });
         if (!device) continue;
 
         const deviceDataObject = { UUID };
-        
+
         for (const param of parameters) {
           const state = await DeviceState.findOne({
             where: {
               deviceId: device.id,
-              stateName: param
-            }
+              stateName: param,
+            },
           });
-          
+
           if (state) {
             const latestInstance = await DeviceStateInstance.findOne({
               where: { deviceStateId: state.id },
               order: [['fromTimestamp', 'DESC']],
-              limit: 1
+              limit: 1,
             });
-            
+
             if (latestInstance) {
               deviceDataObject[param] = latestInstance.value;
             }
           }
         }
 
-        if (Object.keys(deviceDataObject).length > 1) { // > 1 because UUID is always there
+        if (Object.keys(deviceDataObject).length > 1) {
+          // > 1 because UUID is always there
           deviceData.push(deviceDataObject);
         }
       } catch (error) {
@@ -628,48 +670,104 @@ class RuleChainService {
   }
 
   /**
-   * Triggers rule chain execution by automatically collecting required data
-   * @param {number} ruleChainId - The ID of the rule chain to execute
-   * @returns {Promise} Result of rule chain execution
+   * Triggers execution of all rule chains for an organization
+   * @param {number} ruleChainId - Optional specific rule chain ID, if null executes all org rules
+   * @param {number} organizationId - Organization ID
+   * @returns {Promise} Results of rule chain executions
    */
   async trigger(ruleChainId, organizationId) {
     try {
-      // 1. Get rule chain nodes
-      const nodes = await RuleChainNode.findAll({
-        where: { ruleChainId }
-      });
+      // Find all applicable rule chains
+      const whereClause = {
+        organizationId,
+      };
 
-      if (!nodes || nodes.length === 0) {
-        throw new Error('No nodes found for rule chain');
+      // If specific ruleChainId provided, add it to where clause
+      if (ruleChainId) {
+        whereClause.organizationId = organizationId;
       }
 
-      // 2. Extract data requirements from node configs
-      const sensorReqs = new Map();
-      const deviceReqs = new Map();
+      const ruleChains = await RuleChain.findAll({
+        where: whereClause,
+        include: [
+          {
+            model: RuleChainNode,
+            as: 'nodes',
+          },
+        ],
+      });
 
-      for (const node of nodes) {
+      if (!ruleChains || ruleChains.length === 0) {
+        throw new Error(`No rule chains found for organization ${organizationId}`);
+      }
+
+      // Process each rule chain
+      const results = [];
+      for (const ruleChain of ruleChains) {
         try {
-          const config = JSON.parse(node.config || '{}');
-          this._extractRequirements(config, sensorReqs, deviceReqs);
+          // Skip if no nodes
+          if (!ruleChain.nodes || ruleChain.nodes.length === 0) {
+            results.push({
+              ruleChainId: ruleChain.id,
+              name: ruleChain.name,
+              status: 'skipped',
+              message: 'No nodes found',
+            });
+            continue;
+          }
+
+          // 2. Extract data requirements from node configs
+          const sensorReqs = new Map();
+          const deviceReqs = new Map();
+
+          for (const node of ruleChain.nodes) {
+            try {
+              const config = JSON.parse(node.config || '{}');
+              this._extractRequirements(config, sensorReqs, deviceReqs);
+            } catch (error) {
+              console.error(
+                `Error parsing config for node ${node.id} in rule chain ${ruleChain.id}:`,
+                error
+              );
+              // Continue with next node
+            }
+          }
+
+          // 3. Collect required data
+          const [sensorData, deviceData] = await Promise.all([
+            this._collectSensorData(sensorReqs),
+            this._collectDeviceData(deviceReqs),
+          ]);
+
+          // 4. Execute rule chain with collected data
+          const rawData = {
+            sensorData,
+            deviceData,
+          };
+
+          const executionResult = await this.execute(ruleChain.id, rawData);
+          results.push({
+            ruleChainId: ruleChain.id,
+            name: ruleChain.name,
+            status: 'success',
+            result: executionResult,
+          });
         } catch (error) {
-          console.error(`Error parsing config for node ${node.id}:`, error);
-          // Continue with next node
+          results.push({
+            ruleChainId: ruleChain.id,
+            name: ruleChain.name,
+            status: 'error',
+            error: error.message,
+          });
+          // Continue with next rule chain
         }
       }
 
-      // 3. Collect required data
-      const [sensorData, deviceData] = await Promise.all([
-        this._collectSensorData(sensorReqs),
-        this._collectDeviceData(deviceReqs)
-      ]);
-
-      // 4. Execute rule chain with collected data
-      const rawData = {
-        sensorData,
-        deviceData
+      return {
+        organizationId,
+        totalRuleChains: ruleChains.length,
+        results,
       };
-
-      return this.execute(ruleChainId, rawData);
     } catch (error) {
       throw new Error(`Rule chain trigger failed: ${error.message}`);
     }

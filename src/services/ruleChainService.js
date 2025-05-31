@@ -8,7 +8,8 @@ const {
   DeviceState,
   DeviceStateInstance,
 } = require('../models/initModels');
-
+const deviceStateInstanceService = require('./deviceStateInstanceService');
+const notificationManager = require('../utils/notificationManager');
 // Ownership check function for middleware
 const getRuleChainForOwnershipCheck = async (id) => {
   try {
@@ -189,6 +190,17 @@ class RuleChainService {
       // Start with first node
       let currentNode = ruleChain.nodes[0];
       const results = [];
+      
+      // Initialize nodeResults for categorized access
+      const nodeResults = {
+        filters: [],
+        transformations: [],
+        actions: []
+      };
+
+      let allFiltersPassed = true;
+      let transformationsCount = 0;
+      let actionsExecuted = 0;
 
       // Execute nodes sequentially
       while (currentNode) {
@@ -199,35 +211,70 @@ class RuleChainService {
         switch (nodeType) {
           case 'filter':
             actionResult = this._evaluateCondition(data, config);
-            results.push({
+            const filterResult = {
               nodeId: currentNode.id,
               type: 'filter',
               passed: actionResult,
               config,
+            };
+            results.push(filterResult);
+            
+            // Add to categorized results
+            nodeResults.filters.push({
+              nodeId: currentNode.id,
+              passed: actionResult,
+              condition: config
             });
+            
             if (!actionResult) {
+              allFiltersPassed = false;
               break;
             }
             break;
 
           case 'transform':
             data = this._transformData(data, config);
-            results.push({
+            const transformResult = {
               nodeId: currentNode.id,
               type: 'transform',
               newData: data,
               config,
+            };
+            results.push(transformResult);
+            
+            // Add to categorized results
+            nodeResults.transformations.push({
+              nodeId: currentNode.id,
+              transformationType: config.type,
+              dataSnapshot: { ...data }
             });
+            transformationsCount++;
             break;
 
           case 'action':
             actionResult = await this._performAction(config, data);
-            results.push({
+            const actionExecutionResult = {
               nodeId: currentNode.id,
               type: 'action',
               actionResult,
               config,
+            };
+            results.push(actionExecutionResult);
+            
+            // Add to categorized results with enhanced device information
+            nodeResults.actions.push({
+              nodeId: currentNode.id,
+              status: actionResult.status,
+              SourceType: {
+                deviceUuid: config.deviceUuid,
+                value: config.value,
+                deviceType: config.deviceType
+              },
+              command: config.command,
+              timestamp: actionResult.timestamp,
+              notificationSent: false // Will be updated after notification is sent
             });
+            actionsExecuted++;
             break;
 
           default:
@@ -246,10 +293,26 @@ class RuleChainService {
         currentNode = currentNode.nextNodeId ? nodesMap[currentNode.nextNodeId] : null;
       }
 
+      // Create summary information
+      const summary = {
+        totalNodes: results.length,
+        filtersPassed: allFiltersPassed,
+        transformationsApplied: transformationsCount,
+        actionsExecuted: actionsExecuted
+      };
+
+      // Return both new format and preserve original execution details
       return {
         ruleChainId,
-        executedNodes: results,
-        finalData: data,
+        name: ruleChain.name,
+        status: 'success',
+        summary,
+        nodeResults,
+        executionDetails: {
+          ruleChainId,
+          executedNodes: results,
+          finalData: data,
+        }
       };
     } catch (error) {
       throw error;
@@ -519,14 +582,37 @@ class RuleChainService {
   }
 
   async _performAction(config, sensorData) {
-    // For now, just simulate action execution
-    // In real implementation, this would integrate with device control system
-    return {
-      status: 'success',
-      commandSent: config.command || null,
-      timestamp: new Date().toISOString(),
-      sensorData,
-    };
+    try {
+      // Validate required configuration
+      if (!config.command.deviceUuid) {
+        throw new Error('Device UUID is required for action execution');
+      }
+      if (!config.command) {
+        throw new Error('Command is required for action execution');
+      }
+      if (config.command.value === undefined) {
+        throw new Error('Value is required for action execution');
+      }
+
+      // Return action execution result
+      return {
+        status: 'success',
+        commandSent: config.command,
+        timestamp: new Date().toISOString(),
+        deviceInfo: {
+          uuid: config.command.deviceUuid,
+          type: config.type || 'unknown'
+        },
+        sensorData
+      };
+    } catch (error) {
+      console.error('Error in _performAction:', error);
+      return {
+        status: 'error',
+        error: error.message,
+        timestamp: new Date().toISOString()
+      };
+    }
   }
 
   /**
@@ -675,15 +761,14 @@ class RuleChainService {
    * @param {number} organizationId - Organization ID
    * @returns {Promise} Results of rule chain executions
    */
-  async trigger(ruleChainId, organizationId) {
+  async trigger(organizationId) {
     try {
       // Find all applicable rule chains
       const whereClause = {
         organizationId,
       };
 
-      // If specific ruleChainId provided, add it to where clause
-      if (ruleChainId) {
+      if (organizationId) {
         whereClause.organizationId = organizationId;
       }
 
@@ -752,6 +837,54 @@ class RuleChainService {
             status: 'success',
             result: executionResult,
           });
+          // trigger device state instance
+          const deviceStateInstance = executionResult.nodeResults.actions;
+          if(deviceStateInstance){
+            for(const action of deviceStateInstance){
+              try {
+                // Transform action data to match required format
+                const stateChangeData = {
+                  deviceUuid: action.command.deviceUuid,
+                  stateName: action.command.stateName,
+                  value: action.command.value,
+                  initiatedBy: 'rule_chain',
+                  metadata: {
+                    ruleChainId: ruleChain.id,
+                    ruleChainName: ruleChain.name,
+                    nodeId: action.nodeId
+                  }
+                };
+                
+                // Call createInstance with the transformed data
+                const result = await deviceStateInstanceService.createInstance(stateChangeData);
+                
+                // Queue notification with the returned metadata
+                if (result.metadata) {
+                  await notificationManager.queueStateChangeNotification(
+                    {
+                      ...result.metadata,
+                      triggeredBy: 'rule_chain',
+                      ruleChainDetails: stateChangeData.metadata
+                    },
+                    null,  // default priority
+                    true   // broadcast to all since it's system-initiated
+                  );
+                  
+                  // Update action with notification status
+                  action.notificationSent = true;
+                  action.notificationDetails = {
+                    triggeredBy: 'rule_chain',
+                    priority: 'normal',
+                    broadcast: true
+                  };
+                }
+              } catch (error) {
+                console.error(`Error processing device state change for action ${action.nodeId}:`, error);
+                action.notificationSent = false;
+                action.error = error.message;
+              }
+            }
+          }
         } catch (error) {
           results.push({
             ruleChainId: ruleChain.id,

@@ -193,7 +193,7 @@ const triggerChain = async (req, res) => {
   try {
     const { id } = req.params;
     const { organizationId } = req.query;
-    const result = await ruleChainService.trigger(id, organizationId);
+    const result = await ruleChainService.trigger(organizationId);
     res.json({
       status: 'success',
       data: result

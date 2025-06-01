@@ -277,12 +277,12 @@ class RuleChainService {
             
             // Add to categorized results with enhanced device information
             nodeResults.actions.push({
-              nodeId: currentNode.id,
+              nodeId: currentNode.commandid,
               status: actionResult.status,
               SourceType: {
-                deviceUuid: config.deviceUuid,
-                value: config.value,
-                deviceType: config.deviceType
+                deviceUuid: config.command.deviceUuid,
+                value: config.command.value,
+                deviceType: config.type
               },
               command: config.command,
               timestamp: actionResult.timestamp,
@@ -775,7 +775,7 @@ class RuleChainService {
    * @param {number} organizationId - Organization ID
    * @returns {Promise} Results of rule chain executions
    */
-  async trigger(organizationId) {
+  async trigger(organizationId=1) {
     try {
       // Find all applicable rule chains
       const whereClause = {

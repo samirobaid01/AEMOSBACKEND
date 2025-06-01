@@ -272,7 +272,7 @@ const createDataStreamWithToken = async (req, res) => {
         isPriority ? 'high' : 'normal',
         config.broadcastAll
       );
-      ruleChainService.trigger(1);
+      ruleChainService.trigger();
     });
     
   } catch (error) {

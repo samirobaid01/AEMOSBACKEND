@@ -10,6 +10,8 @@ const {
 } = require('../models/initModels');
 const deviceStateInstanceService = require('./deviceStateInstanceService');
 const notificationManager = require('../utils/notificationManager');
+const sequelize = require('sequelize');
+const { Sequelize } = require('sequelize');
 // Ownership check function for middleware
 const getRuleChainForOwnershipCheck = async (id) => {
   try {
@@ -59,6 +61,18 @@ class RuleChainService {
           {
             model: RuleChainNode,
             as: 'nodes',
+            separate: true,
+            order: [
+              [
+                Sequelize.literal(`CASE 
+                  WHEN type = 'filter' THEN 1 
+                  WHEN type = 'transform' THEN 2 
+                  WHEN type = 'action' THEN 3 
+                  ELSE 4 
+                END`),
+                'ASC'
+              ]
+            ]
           },
         ],
       });

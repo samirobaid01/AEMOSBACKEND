@@ -772,19 +772,19 @@ class RuleChainService {
         whereClause.organizationId = organizationId;
       }
 
-      const ruleChains = await RuleChain.findAll({
-        where: whereClause,
-        include: [
-          {
-            model: RuleChainNode,
-            as: 'nodes',
-          },
-        ],
-      });
+        const ruleChains = await RuleChain.findAll({
+          where: whereClause,
+          include: [
+            {
+              model: RuleChainNode,
+              as: 'nodes',
+            },
+          ],
+        });
 
-      if (!ruleChains || ruleChains.length === 0) {
-        throw new Error(`No rule chains found for organization ${organizationId}`);
-      }
+        if (!ruleChains || ruleChains.length === 0) {
+          throw new Error(`No rule chains found for organization ${organizationId}`);
+        }
 
       // Process each rule chain
       const results = [];

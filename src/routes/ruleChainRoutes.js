@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { authenticate } = require('../middlewares/auth');
 const { checkPermission, checkResourceOwnership, checkOrgPermission } = require('../middlewares/permission');
-const { ruleChainService, getRuleChainForOwnershipCheck } = require('../services/ruleChainService');
+const { ruleChainService, getRuleChainForOwnershipCheck, getRuleChainNodeForOwnershipCheck } = require('../services/ruleChainService');
 const validate = require('../middlewares/validate');
 const { querySchema } = require('../validators/ruleChainValidators');
 
@@ -255,6 +255,12 @@ router.post(
   '/nodes',
   authenticate,
   checkPermission('rule.update'),
+  (req, res, next) => {
+    // Set the id param from the body's ruleChainId for ownership check
+    req.params.id = req.body.ruleChainId;
+    next();
+  },
+  checkResourceOwnership(getRuleChainForOwnershipCheck),
   createNode
 );
 
@@ -263,19 +269,19 @@ router
   .get(
     authenticate,
     checkPermission('rule.view'),
-    //checkResourceOwnership(getRuleChainForOwnershipCheck),
+    checkResourceOwnership(getRuleChainNodeForOwnershipCheck),
     getNodeById
   )
   .patch(
     authenticate,
     checkPermission('rule.update'),
-    checkResourceOwnership(getRuleChainForOwnershipCheck),
+    checkResourceOwnership(getRuleChainNodeForOwnershipCheck),
     updateNode
   )
   .delete(
     authenticate,
     checkPermission('rule.delete'),
-    checkResourceOwnership(getRuleChainForOwnershipCheck),
+    checkResourceOwnership(getRuleChainNodeForOwnershipCheck),
     deleteNode
   );
 

@@ -10,7 +10,7 @@ const {
 } = require('../models/initModels');
 const deviceStateInstanceService = require('./deviceStateInstanceService');
 const notificationManager = require('../utils/notificationManager');
-const sequelize = require('sequelize');
+const sequelize = require('../config/database');
 const { Sequelize } = require('sequelize');
 // Ownership check function for middleware
 const getRuleChainForOwnershipCheck = async (id) => {
@@ -24,6 +24,96 @@ const getRuleChainForOwnershipCheck = async (id) => {
     throw error;
   }
 };
+
+/**
+ * Get a rule chain node with its organization ID for ownership checking
+ * This implementation finds the organization ID through the RuleChain relationship
+ * @param {Number} id - RuleChainNode ID
+ * @returns {Promise<Object>} RuleChainNode with organizationId
+ */
+const getRuleChainNodeForOwnershipCheck = async (id) => {
+  try {
+    // First check if the node exists
+    const ruleChainNode = await RuleChainNode.findByPk(id);
+    
+    if (!ruleChainNode) {
+      console.log(`RuleChainNode with ID ${id} not found!`);
+      return null;
+    }
+    
+    // Get organization by direct SQL for reliability
+    const query = `
+      SELECT rc.organizationId
+      FROM RuleChainNode rcn
+      JOIN RuleChain rc ON rcn.ruleChainId = rc.id
+      WHERE rcn.id = ?
+      LIMIT 1
+    `;
+    
+    const results = await sequelize.query(query, {
+      replacements: [Number(id)],
+      type: sequelize.QueryTypes.SELECT
+    });
+    
+    let organizationId = null;
+    if (results && results.length > 0 && results[0].organizationId) {
+      organizationId = Number(results[0].organizationId);
+      console.log(`Organization ID for rule chain node ${id}: ${organizationId}`);
+      
+      return {
+        id: ruleChainNode.id,
+        organizationId: organizationId
+      };
+    }
+    
+    // If no organization found, return node with null organizationId
+    console.warn(`RuleChainNode ${id} is not associated with any organization. No organization association found.`);
+    return {
+      id: ruleChainNode.id,
+      organizationId: null
+    };
+  } catch (error) {
+    console.error('Error in getRuleChainNodeForOwnershipCheck:', error.message);
+    return null;
+  }
+};
+
+/**
+ * Check if a rule chain node belongs to a specified organization
+ * @param {Number} nodeId - RuleChainNode ID
+ * @param {Number} organizationId - Organization ID
+ * @returns {Promise<Boolean>} True if node belongs to organization
+ */
+const ruleChainNodeBelongsToOrganization = async (nodeId, organizationId) => {
+  try {
+    // First check if the node exists
+    const node = await RuleChainNode.findByPk(nodeId);
+    if (!node) {
+      return false;
+    }
+
+    // Use direct SQL to check organizational ownership through RuleChain
+    const query = `
+      SELECT COUNT(*) as count
+      FROM RuleChainNode rcn
+      JOIN RuleChain rc ON rcn.ruleChainId = rc.id
+      WHERE rcn.id = ? AND rc.organizationId = ?
+    `;
+    
+    const results = await sequelize.query(query, {
+      replacements: [Number(nodeId), Number(organizationId)],
+      type: sequelize.QueryTypes.SELECT
+    });
+    
+    return results[0].count > 0;
+  } catch (error) {
+    console.error(`Error in ruleChainNodeBelongsToOrganization:`, error);
+    return false;
+  }
+};
+
+// Attach the cross-organization check function to make it available for checkResourceOwnership
+getRuleChainNodeForOwnershipCheck.resourceBelongsToOrganization = ruleChainNodeBelongsToOrganization;
 
 class RuleChainService {
   // RuleChain operations
@@ -924,4 +1014,5 @@ class RuleChainService {
 module.exports = {
   ruleChainService: new RuleChainService(),
   getRuleChainForOwnershipCheck,
+  getRuleChainNodeForOwnershipCheck,
 };

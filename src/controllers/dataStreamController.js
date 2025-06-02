@@ -6,6 +6,7 @@ const TelemetryData = require('../models/TelemetryData');
 const DataStream = require('../models/DataStream');
 const logger = require('../utils/logger');
 const socketManager = require('../utils/socketManager');
+const {ruleChainService} = require('../services/ruleChainService');
 
 // Get all data streams
 const getAllDataStreams = async (req, res, next) => {
@@ -271,6 +272,7 @@ const createDataStreamWithToken = async (req, res) => {
         isPriority ? 'high' : 'normal',
         config.broadcastAll
       );
+      ruleChainService.trigger();
     });
     
   } catch (error) {

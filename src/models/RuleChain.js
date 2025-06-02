@@ -3,34 +3,33 @@ const sequelize = require('../config/database');
 
 const RuleChain = sequelize.define('RuleChain', {
   id: {
-    type: DataTypes.BIGINT,
+    type: DataTypes.INTEGER,
     primaryKey: true,
     autoIncrement: true
   },
+  organizationId: {
+    type: DataTypes.BIGINT,
+    allowNull: true
+  },
   name: {
-    type: DataTypes.STRING(50)
+    type: DataTypes.STRING(100),
+    allowNull: false
   },
   description: {
-    type: DataTypes.TEXT
+    type: DataTypes.TEXT,
+    allowNull: true
   },
-  status: {
-    type: DataTypes.BOOLEAN
-  },
-  executionInterval: {
-    type: DataTypes.STRING(50)
-  },
-  lastExecution: {
-    type: DataTypes.DATE
+  createdAt: {
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW
   },
   updatedAt: {
-    type: DataTypes.DATE
-  },
-  organizationId: {
-    type: DataTypes.BIGINT
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW
   }
 }, {
   tableName: 'RuleChain',
-  timestamps: false
+  timestamps: true
 });
 
 module.exports = RuleChain; 

@@ -12,6 +12,7 @@ const updateRuleChainSchema = Joi.object({
 });
 
 const createRuleChainNodeSchema = Joi.object({
+  name: Joi.string().max(100).required(),
   ruleChainId: Joi.number().integer().required(),
   type: Joi.string().valid('filter', 'transform', 'action').required(),
   config: Joi.string().allow(null),
@@ -19,6 +20,7 @@ const createRuleChainNodeSchema = Joi.object({
 });
 
 const updateRuleChainNodeSchema = Joi.object({
+  name: Joi.string().max(100),
   type: Joi.string().valid('filter', 'transform', 'action'),
   config: Joi.string().allow(null),
   nextNodeId: Joi.number().integer().allow(null)

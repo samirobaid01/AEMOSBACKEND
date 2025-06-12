@@ -7,6 +7,10 @@ const RuleChainNode = sequelize.define('RuleChainNode', {
     primaryKey: true,
     autoIncrement: true
   },
+  name: {
+    type: DataTypes.STRING,
+    allowNull: false
+  },
   ruleChainId: {
     type: DataTypes.INTEGER,
     allowNull: false
@@ -25,7 +29,14 @@ const RuleChainNode = sequelize.define('RuleChainNode', {
   }
 }, {
   tableName: 'RuleChainNode',
-  timestamps: false
+  timestamps: false,
+  indexes: [
+    {
+      unique: true,
+      fields: ['name', 'ruleChainId'],
+      name: 'unique_name_per_rule_chain'
+    }
+  ]
 });
 
 module.exports = RuleChainNode; 

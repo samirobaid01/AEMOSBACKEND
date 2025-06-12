@@ -199,6 +199,20 @@ class RuleChainService {
   // RuleChainNode operations
   async createNode(data) {
     try {
+      // Check if a node with the same name exists in the same rule chain
+      const existingNode = await RuleChainNode.findOne({
+        where: {
+          ruleChainId: data.ruleChainId,
+          name: data.name
+        }
+      });
+
+      if (existingNode) {
+        const error = new Error('A node with this name already exists in this rule chain');
+        error.statusCode = 400;
+        throw error;
+      }
+
       const node = await RuleChainNode.create(data);
       return node;
     } catch (error) {
@@ -216,6 +230,7 @@ class RuleChainService {
             as: 'nextNode',
           },
         ],
+        order: [['name', 'ASC']] // Order by name
       });
       return nodes;
     } catch (error) {
@@ -241,14 +256,31 @@ class RuleChainService {
 
   async updateNode(id, data) {
     try {
-      const [updated] = await RuleChainNode.update(data, {
-        where: { id },
-      });
-      if (updated) {
-        const updatedNode = await this.findNodeById(id);
-        return updatedNode;
+      const node = await RuleChainNode.findByPk(id);
+      if (!node) {
+        throw new Error('Node not found');
       }
-      throw new Error('Node not found');
+
+      // If name is being updated, check for uniqueness
+      if (data.name && data.name !== node.name) {
+        const existingNode = await RuleChainNode.findOne({
+          where: {
+            ruleChainId: node.ruleChainId,
+            name: data.name,
+            id: { [Sequelize.Op.ne]: id } // Exclude current node
+          }
+        });
+
+        if (existingNode) {
+          const error = new Error('A node with this name already exists in this rule chain');
+          error.statusCode = 400;
+          throw error;
+        }
+      }
+
+      await node.update(data);
+      const updatedNode = await this.findNodeById(id);
+      return updatedNode;
     } catch (error) {
       throw error;
     }

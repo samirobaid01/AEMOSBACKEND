@@ -10,6 +10,7 @@ const {
 } = require('../models/initModels');
 const deviceStateInstanceService = require('./deviceStateInstanceService');
 const notificationManager = require('../utils/notificationManager');
+const { parseDuration } = require('../utils/timeUtils');
 const sequelize = require('../config/database');
 const { Sequelize } = require('sequelize');
 // Ownership check function for middleware
@@ -554,7 +555,7 @@ class RuleChainService {
     }
 
     // Handle simple expression
-    const { sourceType, UUID, key, operator, value } = config;
+    const { sourceType, UUID, key, operator, value, duration } = config;
 
     // Get the appropriate data source
     const sourceMap = sourceType === 'sensor' ? data.sensorData : data.deviceData;
@@ -676,52 +677,50 @@ class RuleChainService {
       case 'olderThan': {
         const sourceTime = new Date(sourceTimestamp).getTime();
         const compareTime = Date.now() - sourceTime; // elapsed time in ms
-      
+
         // Example value: "10s", "5m", "2h", "1d"
-        const parseDuration = (value) => {
-          const match = value.match(/^(\d+)(s|m|h|d)$/);
-          if (!match) return 0;
-          const num = parseInt(match[1], 10);
-          const unit = match[2];
-          const unitToMs = {
-            s: 1000,
-            m: 60000,
-            h: 3600000,
-            d: 86400000,
-          };
-          return num * unitToMs[unit];
-        };
-      
         return compareTime > parseDuration(value);
       }
-      
+
       case 'newerThan': {
-        const match = value.match(/^(\d+)(s|m|h|d)$/);
-        if (!match) return 0;
-        const num = parseInt(match[1], 10);
-        const unit = match[2];
-        const unitToMs = {
-          s: 1000,
-          m: 60000,
-          h: 3600000,
-          d: 86400000,
-        };
-        const compareTime = Date.now() - sourceTimestamp; // elapsed time in ms
+        const sourceTime = new Date(sourceTimestamp).getTime();
+        const compareTime = Date.now() - sourceTime; // elapsed time in ms
         return compareTime < parseDuration(value);
       }
       case 'inLast': {
-        const match = value.match(/^(\d+)(s|m|h|d)$/);
-        if (!match) return 0;
-        const num = parseInt(match[1], 10);
-        const unit = match[2];
-        const unitToMs = {
-          s: 1000,
-          m: 60000,
-          h: 3600000,
-          d: 86400000,
-        };
-        const compareTime = Date.now() - sourceTimestamp; // elapsed time in ms
-        return compareTime >= parseDuration(value);
+        const sourceTime = new Date(sourceTimestamp).getTime();
+        const compareTime = Date.now() - sourceTime; // elapsed time in ms
+        return compareTime <= parseDuration(value);
+      }
+      case 'valueOlderThan': {
+        const sourceTime = new Date(sourceTimestamp).getTime();
+        const compareTime = Date.now() - sourceTime; // elapsed time in ms
+
+        if (value === sourceValue) {
+          return compareTime > parseDuration(duration);
+        } else {
+          return false;
+        }
+      }
+      case 'valueNewerThan': {
+        const sourceTime = new Date(sourceTimestamp).getTime();
+        const compareTime = Date.now() - sourceTime; // elapsed time in ms
+
+        if (value === sourceValue) {
+          return compareTime < parseDuration(duration);
+        } else {
+          return false;
+        }
+      }
+      case 'valueInLast': {
+        const sourceTime = new Date(sourceTimestamp).getTime();
+        const compareTime = Date.now() - sourceTime; // elapsed time in ms
+
+        if (value === sourceValue) {
+          return compareTime <= parseDuration(duration);
+        } else {
+          return false;
+        }
       }
 
       default:

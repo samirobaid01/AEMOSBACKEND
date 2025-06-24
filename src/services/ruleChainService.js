@@ -710,9 +710,18 @@ class RuleChainService {
         return compareTime < parseDuration(value);
       }
       case 'inLast': {
-        const sourceTime = new Date(sourceValue).getTime();
-        const compareTime = Date.now() - value * 1000; // value in seconds
-        return sourceTime >= compareTime;
+        const match = value.match(/^(\d+)(s|m|h|d)$/);
+        if (!match) return 0;
+        const num = parseInt(match[1], 10);
+        const unit = match[2];
+        const unitToMs = {
+          s: 1000,
+          m: 60000,
+          h: 3600000,
+          d: 86400000,
+        };
+        const compareTime = Date.now() - sourceTimestamp; // elapsed time in ms
+        return compareTime >= parseDuration(value);
       }
 
       default:

@@ -569,6 +569,7 @@ class RuleChainService {
     }
 
     const sourceValue = sourceInstance[key];
+    const sourceTimestamp = sourceInstance['timestamp'];
 
     // Special operators that don't need sourceValue to be defined
     switch (operator) {
@@ -673,14 +674,40 @@ class RuleChainService {
 
       // Time operations
       case 'olderThan': {
-        const sourceTime = new Date(sourceValue).getTime();
-        const compareTime = Date.now() - value * 1000; // value in seconds
-        return sourceTime < compareTime;
+        const sourceTime = new Date(sourceTimestamp).getTime();
+        const compareTime = Date.now() - sourceTime; // elapsed time in ms
+      
+        // Example value: "10s", "5m", "2h", "1d"
+        const parseDuration = (value) => {
+          const match = value.match(/^(\d+)(s|m|h|d)$/);
+          if (!match) return 0;
+          const num = parseInt(match[1], 10);
+          const unit = match[2];
+          const unitToMs = {
+            s: 1000,
+            m: 60000,
+            h: 3600000,
+            d: 86400000,
+          };
+          return num * unitToMs[unit];
+        };
+      
+        return compareTime > parseDuration(value);
       }
+      
       case 'newerThan': {
-        const sourceTime = new Date(sourceValue).getTime();
-        const compareTime = Date.now() - value * 1000; // value in seconds
-        return sourceTime > compareTime;
+        const match = value.match(/^(\d+)(s|m|h|d)$/);
+        if (!match) return 0;
+        const num = parseInt(match[1], 10);
+        const unit = match[2];
+        const unitToMs = {
+          s: 1000,
+          m: 60000,
+          h: 3600000,
+          d: 86400000,
+        };
+        const compareTime = Date.now() - sourceTimestamp; // elapsed time in ms
+        return compareTime < parseDuration(value);
       }
       case 'inLast': {
         const sourceTime = new Date(sourceValue).getTime();
@@ -815,6 +842,7 @@ class RuleChainService {
             if (latestStream) {
               // Convert value based on telemetry datatype
               let value = latestStream.value;
+              let receivedAt = latestStream.recievedAt;
               switch (telemetry.datatype) {
                 case 'number':
                   value = Number(value);
@@ -825,6 +853,7 @@ class RuleChainService {
                 // String and other types remain as is
               }
               sensorDataObject[param] = value;
+              sensorDataObject['timestamp'] = receivedAt;
             }
           }
         }
@@ -874,6 +903,7 @@ class RuleChainService {
 
             if (latestInstance) {
               deviceDataObject[param] = latestInstance.value;
+              deviceDataObject['timestamp'] = latestInstance.fromTimestamp;
             }
           }
         }

@@ -10,6 +10,7 @@ const {
 } = require('../models/initModels');
 const deviceStateInstanceService = require('./deviceStateInstanceService');
 const notificationManager = require('../utils/notificationManager');
+const { parseDuration } = require('../utils/timeUtils');
 const sequelize = require('../config/database');
 const { Sequelize } = require('sequelize');
 // Ownership check function for middleware
@@ -554,7 +555,7 @@ class RuleChainService {
     }
 
     // Handle simple expression
-    const { sourceType, UUID, key, operator, value } = config;
+    const { sourceType, UUID, key, operator, value, duration } = config;
 
     // Get the appropriate data source
     const sourceMap = sourceType === 'sensor' ? data.sensorData : data.deviceData;
@@ -569,6 +570,7 @@ class RuleChainService {
     }
 
     const sourceValue = sourceInstance[key];
+    const sourceTimestamp = sourceInstance['timestamp'];
 
     // Special operators that don't need sourceValue to be defined
     switch (operator) {
@@ -673,19 +675,52 @@ class RuleChainService {
 
       // Time operations
       case 'olderThan': {
-        const sourceTime = new Date(sourceValue).getTime();
-        const compareTime = Date.now() - value * 1000; // value in seconds
-        return sourceTime < compareTime;
+        const sourceTime = new Date(sourceTimestamp).getTime();
+        const compareTime = Date.now() - sourceTime; // elapsed time in ms
+
+        // Example value: "10s", "5m", "2h", "1d"
+        return compareTime > parseDuration(value);
       }
+
       case 'newerThan': {
-        const sourceTime = new Date(sourceValue).getTime();
-        const compareTime = Date.now() - value * 1000; // value in seconds
-        return sourceTime > compareTime;
+        const sourceTime = new Date(sourceTimestamp).getTime();
+        const compareTime = Date.now() - sourceTime; // elapsed time in ms
+        return compareTime < parseDuration(value);
       }
       case 'inLast': {
-        const sourceTime = new Date(sourceValue).getTime();
-        const compareTime = Date.now() - value * 1000; // value in seconds
-        return sourceTime >= compareTime;
+        const sourceTime = new Date(sourceTimestamp).getTime();
+        const compareTime = Date.now() - sourceTime; // elapsed time in ms
+        return compareTime <= parseDuration(value);
+      }
+      case 'valueOlderThan': {
+        const sourceTime = new Date(sourceTimestamp).getTime();
+        const compareTime = Date.now() - sourceTime; // elapsed time in ms
+
+        if (value === sourceValue) {
+          return compareTime > parseDuration(duration);
+        } else {
+          return false;
+        }
+      }
+      case 'valueNewerThan': {
+        const sourceTime = new Date(sourceTimestamp).getTime();
+        const compareTime = Date.now() - sourceTime; // elapsed time in ms
+
+        if (value === sourceValue) {
+          return compareTime < parseDuration(duration);
+        } else {
+          return false;
+        }
+      }
+      case 'valueInLast': {
+        const sourceTime = new Date(sourceTimestamp).getTime();
+        const compareTime = Date.now() - sourceTime; // elapsed time in ms
+
+        if (value === sourceValue) {
+          return compareTime <= parseDuration(duration);
+        } else {
+          return false;
+        }
       }
 
       default:
@@ -815,6 +850,7 @@ class RuleChainService {
             if (latestStream) {
               // Convert value based on telemetry datatype
               let value = latestStream.value;
+              let receivedAt = latestStream.recievedAt;
               switch (telemetry.datatype) {
                 case 'number':
                   value = Number(value);
@@ -825,6 +861,7 @@ class RuleChainService {
                 // String and other types remain as is
               }
               sensorDataObject[param] = value;
+              sensorDataObject['timestamp'] = receivedAt;
             }
           }
         }
@@ -874,6 +911,7 @@ class RuleChainService {
 
             if (latestInstance) {
               deviceDataObject[param] = latestInstance.value;
+              deviceDataObject['timestamp'] = latestInstance.fromTimestamp;
             }
           }
         }

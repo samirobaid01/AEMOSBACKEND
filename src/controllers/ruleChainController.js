@@ -238,6 +238,204 @@ class RuleChainController {
       });
     }
   }
+
+  // ========== SCHEDULE MANAGEMENT CONTROLLERS ==========
+
+  /**
+   * Get schedule information for a rule chain
+   * GET /api/v1/rule-chains/:id/schedule
+   */
+  async getScheduleInfo(req, res) {
+    try {
+      const { id } = req.params;
+      const scheduleInfo = await ruleChainService.ruleChainService.getScheduleInfo(id);
+
+      res.json({
+        status: 'success',
+        data: scheduleInfo
+      });
+    } catch (error) {
+      res.status(500).json({
+        status: 'error',
+        message: error.message
+      });
+    }
+  }
+
+  /**
+   * Enable scheduling for a rule chain
+   * PUT /api/v1/rule-chains/:id/schedule/enable
+   */
+  async enableSchedule(req, res) {
+    try {
+      const { id } = req.params;
+      const { cronExpression, timezone, priority, maxRetries, retryDelay, metadata } = req.body;
+
+      // Validate required fields
+      if (!cronExpression) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'Cron expression is required'
+        });
+      }
+
+      const options = {
+        timezone: timezone || 'UTC',
+        priority: priority || 0,
+        maxRetries: maxRetries || 0,
+        retryDelay: retryDelay || 0,
+        metadata: metadata || null
+      };
+
+      const updatedRuleChain = await ruleChainService.ruleChainService.enableSchedule(id, cronExpression, options);
+
+      res.json({
+        status: 'success',
+        message: 'Schedule enabled successfully',
+        data: updatedRuleChain
+      });
+    } catch (error) {
+      res.status(500).json({
+        status: 'error',
+        message: error.message
+      });
+    }
+  }
+
+  /**
+   * Disable scheduling for a rule chain
+   * PUT /api/v1/rule-chains/:id/schedule/disable
+   */
+  async disableSchedule(req, res) {
+    try {
+      const { id } = req.params;
+      const updatedRuleChain = await ruleChainService.ruleChainService.disableSchedule(id);
+
+      res.json({
+        status: 'success',
+        message: 'Schedule disabled successfully',
+        data: updatedRuleChain
+      });
+    } catch (error) {
+      res.status(500).json({
+        status: 'error',
+        message: error.message
+      });
+    }
+  }
+
+  /**
+   * Update schedule settings for a rule chain
+   * PATCH /api/v1/rule-chains/:id/schedule
+   */
+  async updateSchedule(req, res) {
+    try {
+      const { id } = req.params;
+      const scheduleData = req.body;
+
+      // Validate that at least one schedule field is provided
+      const allowedFields = ['cronExpression', 'timezone', 'priority', 'maxRetries', 'retryDelay', 'scheduleMetadata'];
+      const hasValidField = allowedFields.some(field => scheduleData[field] !== undefined);
+
+      if (!hasValidField) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'At least one schedule field must be provided'
+        });
+      }
+
+      const updatedRuleChain = await ruleChainService.ruleChainService.updateSchedule(id, scheduleData);
+
+      res.json({
+        status: 'success',
+        message: 'Schedule updated successfully',
+        data: updatedRuleChain
+      });
+    } catch (error) {
+      res.status(500).json({
+        status: 'error',
+        message: error.message
+      });
+    }
+  }
+
+  /**
+   * Get all scheduled rule chains
+   * GET /api/v1/rule-chains/scheduled
+   */
+  async getScheduledRuleChains(req, res) {
+    try {
+      const { organizationId } = req.query;
+      const scheduledRuleChains = await ruleChainService.ruleChainService.getScheduledRuleChains(organizationId);
+
+      res.json({
+        status: 'success',
+        results: scheduledRuleChains.length,
+        data: scheduledRuleChains
+      });
+    } catch (error) {
+      res.status(500).json({
+        status: 'error',
+        message: error.message
+      });
+    }
+  }
+
+  /**
+   * Manually trigger a scheduled rule chain
+   * POST /api/v1/rule-chains/:id/schedule/trigger
+   */
+  async manualTriggerScheduled(req, res) {
+    try {
+      const { id } = req.params;
+      
+      // First verify the rule chain exists and has scheduling enabled
+      const scheduleInfo = await ruleChainService.ruleChainService.getScheduleInfo(id);
+      
+      if (!scheduleInfo.scheduleEnabled) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'Rule chain does not have scheduling enabled'
+        });
+      }
+
+      // Get the rule chain to extract organizationId
+      const ruleChain = await ruleChainService.ruleChainService.findChainById(id);
+      if (!ruleChain) {
+        return res.status(404).json({
+          status: 'error',
+          message: 'Rule chain not found'
+        });
+      }
+
+      // Trigger the specific rule chain
+      const executionResult = await ruleChainService.ruleChainService.trigger(ruleChain.organizationId, id);
+
+      // Update execution statistics
+      const success = executionResult.results.every(result => result.status === 'success');
+      await ruleChainService.ruleChainService.updateExecutionStats(id, success);
+
+      res.json({
+        status: 'success',
+        message: 'Rule chain triggered manually',
+        data: executionResult
+      });
+    } catch (error) {
+      // Update failure stats
+      try {
+        await ruleChainService.ruleChainService.updateExecutionStats(req.params.id, false, error);
+      } catch (statsError) {
+        console.error('Failed to update failure stats:', statsError);
+      }
+
+      res.status(500).json({
+        status: 'error',
+        message: error.message
+      });
+    }
+  }
+
+  // ========== END SCHEDULE MANAGEMENT ==========
 }
 
 module.exports = new RuleChainController(); 

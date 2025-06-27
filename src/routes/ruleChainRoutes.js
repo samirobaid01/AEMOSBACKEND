@@ -6,8 +6,8 @@ const { ruleChainService, getRuleChainForOwnershipCheck, getRuleChainNodeForOwne
 const validate = require('../middlewares/validate');
 const { querySchema } = require('../validators/ruleChainValidators');
 const { body, param } = require('express-validator');
-const ruleChainController = require('../controllers/ruleChainController');
 const { ApiError } = require('../middlewares/errorHandler');
+const Joi = require('joi');
 
 // Only import rule engine if not disabled
 let ruleEngine = null;
@@ -358,6 +358,178 @@ const triggerChain = async (req, res) => {
   }
 };
 
+// ========== SCHEDULE CONTROLLER FUNCTIONS ==========
+
+const getScheduleInfo = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const scheduleInfo = await ruleChainService.getScheduleInfo(id);
+
+    res.json({
+      status: 'success',
+      data: scheduleInfo
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      message: error.message
+    });
+  }
+};
+
+const enableSchedule = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { cronExpression, timezone, priority, maxRetries, retryDelay, metadata } = req.body;
+
+    // Validate required fields
+    if (!cronExpression) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Cron expression is required'
+      });
+    }
+
+    const options = {
+      timezone: timezone || 'UTC',
+      priority: priority || 0,
+      maxRetries: maxRetries || 0,
+      retryDelay: retryDelay || 0,
+      metadata: metadata || null
+    };
+
+    const updatedRuleChain = await ruleChainService.enableSchedule(id, cronExpression, options);
+
+    res.json({
+      status: 'success',
+      message: 'Schedule enabled successfully',
+      data: updatedRuleChain
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      message: error.message
+    });
+  }
+};
+
+const disableSchedule = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updatedRuleChain = await ruleChainService.disableSchedule(id);
+
+    res.json({
+      status: 'success',
+      message: 'Schedule disabled successfully',
+      data: updatedRuleChain
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      message: error.message
+    });
+  }
+};
+
+const updateSchedule = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const scheduleData = req.body;
+
+    // Validate that at least one schedule field is provided
+    const allowedFields = ['cronExpression', 'timezone', 'priority', 'maxRetries', 'retryDelay', 'scheduleMetadata'];
+    const hasValidField = allowedFields.some(field => scheduleData[field] !== undefined);
+
+    if (!hasValidField) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'At least one schedule field must be provided'
+      });
+    }
+
+    const updatedRuleChain = await ruleChainService.updateSchedule(id, scheduleData);
+
+    res.json({
+      status: 'success',
+      message: 'Schedule updated successfully',
+      data: updatedRuleChain
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      message: error.message
+    });
+  }
+};
+
+const getScheduledRuleChains = async (req, res) => {
+  try {
+    const { organizationId } = req.query;
+    const scheduledRuleChains = await ruleChainService.getScheduledRuleChains(organizationId);
+
+    res.json({
+      status: 'success',
+      results: scheduledRuleChains.length,
+      data: scheduledRuleChains
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      message: error.message
+    });
+  }
+};
+
+const manualTriggerScheduled = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // First verify the rule chain exists and has scheduling enabled
+    const scheduleInfo = await ruleChainService.getScheduleInfo(id);
+    
+    if (!scheduleInfo.scheduleEnabled) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Rule chain does not have scheduling enabled'
+      });
+    }
+
+    // Get the rule chain to extract organizationId
+    const ruleChain = await ruleChainService.findChainById(id);
+    if (!ruleChain) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Rule chain not found'
+      });
+    }
+
+    // Trigger the specific rule chain
+    const executionResult = await ruleChainService.trigger(ruleChain.organizationId, id);
+
+    // Update execution statistics
+    const success = executionResult.results.every(result => result.status === 'success');
+    await ruleChainService.updateExecutionStats(id, success);
+
+    res.json({
+      status: 'success',
+      message: 'Rule chain triggered manually',
+      data: executionResult
+    });
+  } catch (error) {
+    // Update failure stats
+    try {
+      await ruleChainService.updateExecutionStats(req.params.id, false, error);
+    } catch (statsError) {
+      console.error('Failed to update failure stats:', statsError);
+    }
+
+    res.status(500).json({
+      status: 'error',
+      message: error.message
+    });
+  }
+};
+
 // RuleChain routes
 router
   .route('/')
@@ -372,6 +544,63 @@ router
     checkPermission('rule.create'),
     createChain
   );
+
+// ========== SCHEDULE ROUTES - Must be before ANY parameterized routes ==========
+
+// Get all scheduled rule chains
+router.get(
+  '/scheduled',
+  authenticate,
+  checkPermission('rule.view'),
+  getScheduledRuleChains
+);
+
+// Get schedule information for a specific rule chain
+router.get(
+  '/:id/schedule',
+  authenticate,
+  checkPermission('rule.view'),
+  checkResourceOwnership(getRuleChainForOwnershipCheck),
+  getScheduleInfo
+);
+
+// Enable scheduling for a rule chain
+router.put(
+  '/:id/schedule/enable',
+  authenticate,
+  checkPermission('rule.update'),
+  checkResourceOwnership(getRuleChainForOwnershipCheck),
+  enableSchedule
+);
+
+// Disable scheduling for a rule chain
+router.put(
+  '/:id/schedule/disable',
+  authenticate,
+  checkPermission('rule.update'),
+  checkResourceOwnership(getRuleChainForOwnershipCheck),
+  disableSchedule
+);
+
+// Update schedule settings for a rule chain
+router.patch(
+  '/:id/schedule',
+  authenticate,
+  checkPermission('rule.update'),
+  checkResourceOwnership(getRuleChainForOwnershipCheck),
+  updateSchedule
+);
+
+// Manually trigger a scheduled rule chain
+router.post(
+  '/:id/schedule/trigger',
+  authenticate,
+  checkPermission('rule.update'),
+  checkResourceOwnership(getRuleChainForOwnershipCheck),
+  manualTriggerScheduled
+);
+
+// ========== PARAMETERIZED ROUTES (must come after specific routes) ==========
 
 router
   .route('/:id')

@@ -63,10 +63,25 @@ class RuleEngine {
       
       logger.info('🎛️ DEBUG: Rule engine manager initialized');
 
-      // Initialize schedule manager
-      this.scheduleManager = new ScheduleManager(this.eventBus);
+      // Initialize enhanced schedule manager with database integration
+      logger.info('📅 DEBUG: Initializing enhanced schedule manager with database integration...');
       
-      logger.info('📅 DEBUG: Schedule manager initialized');
+      // Import ruleChainService for database integration
+      let ruleChainService = null;
+      try {
+        const ruleChainServiceModule = require('../services/ruleChainService');
+        ruleChainService = ruleChainServiceModule.ruleChainService;
+        logger.info('🗄️ DEBUG: RuleChainService loaded for schedule manager');
+      } catch (error) {
+        logger.warn('⚠️ DEBUG: Could not load ruleChainService, schedule manager will work in memory-only mode:', error.message);
+      }
+      
+      this.scheduleManager = new ScheduleManager(this.eventBus, ruleChainService);
+      
+      // Initialize the schedule manager (loads database schedules)
+      await this.scheduleManager.initialize();
+      
+      logger.info('📅 DEBUG: Enhanced schedule manager initialized');
 
       // Set up event listeners with error handling
       this._setupEventListeners();
@@ -83,7 +98,8 @@ class RuleEngine {
           ruleChainIndex: !!this.ruleChainIndex,
           ruleEngineManager: !!this.manager,
           circuitBreaker: !!this.circuitBreaker,
-          scheduleManager: !!this.scheduleManager
+          scheduleManager: !!this.scheduleManager,
+          databaseIntegration: !!ruleChainService
         }
       };
     } catch (error) {
@@ -430,7 +446,7 @@ class RuleEngine {
   // ========== SCHEDULE MANAGEMENT METHODS ==========
 
   /**
-   * Add a new schedule
+   * Add a new schedule (legacy method for backward compatibility)
    * @param {Object} scheduleConfig 
    */
   addSchedule(scheduleConfig) {
@@ -440,44 +456,86 @@ class RuleEngine {
   }
 
   /**
-   * Remove a schedule
-   * @param {string} scheduleId 
+   * Add a new database-backed schedule for a rule chain
+   * @param {number} ruleChainId - Rule chain ID
+   * @param {Object} scheduleConfig - Schedule configuration
    */
-  removeSchedule(scheduleId) {
+  async addDatabaseSchedule(ruleChainId, scheduleConfig) {
+    this._ensureInitialized();
+    
+    return this.scheduleManager.addDatabaseSchedule(ruleChainId, scheduleConfig);
+  }
+
+  /**
+   * Remove a schedule (handles both legacy and database schedules)
+   * @param {string|number} scheduleId 
+   */
+  async removeSchedule(scheduleId) {
     this._ensureInitialized();
     
     return this.scheduleManager.removeSchedule(scheduleId);
   }
 
   /**
-   * Enable a schedule
-   * @param {string} scheduleId 
+   * Remove a database-backed schedule
+   * @param {number} ruleChainId - Rule chain ID
    */
-  enableSchedule(scheduleId) {
+  async removeDatabaseSchedule(ruleChainId) {
+    this._ensureInitialized();
+    
+    return this.scheduleManager.removeDatabaseSchedule(ruleChainId);
+  }
+
+  /**
+   * Enable a schedule (handles both legacy and database schedules)
+   * @param {string|number} scheduleId 
+   */
+  async enableSchedule(scheduleId) {
     this._ensureInitialized();
     
     return this.scheduleManager.enableSchedule(scheduleId);
   }
 
   /**
-   * Disable a schedule
-   * @param {string} scheduleId 
+   * Disable a schedule (handles both legacy and database schedules)
+   * @param {string|number} scheduleId 
    */
-  disableSchedule(scheduleId) {
+  async disableSchedule(scheduleId) {
     this._ensureInitialized();
     
     return this.scheduleManager.disableSchedule(scheduleId);
   }
 
   /**
-   * Update a schedule
-   * @param {string} scheduleId 
+   * Update a schedule (handles both legacy and database schedules)
+   * @param {string|number} scheduleId 
    * @param {Object} updates 
    */
-  updateSchedule(scheduleId, updates) {
+  async updateSchedule(scheduleId, updates) {
     this._ensureInitialized();
     
     return this.scheduleManager.updateSchedule(scheduleId, updates);
+  }
+
+  /**
+   * Update a database-backed schedule
+   * @param {number} ruleChainId - Rule chain ID
+   * @param {Object} updates - Updates to apply
+   */
+  async updateDatabaseSchedule(ruleChainId, updates) {
+    this._ensureInitialized();
+    
+    return this.scheduleManager.updateDatabaseSchedule(ruleChainId, updates);
+  }
+
+  /**
+   * Sync schedule from database (handle external changes)
+   * @param {number} ruleChainId - Rule chain ID
+   */
+  async syncScheduleFromDatabase(ruleChainId) {
+    this._ensureInitialized();
+    
+    return this.scheduleManager.syncScheduleFromDatabase(ruleChainId);
   }
 
   /**
@@ -492,7 +550,7 @@ class RuleEngine {
 
   /**
    * Get schedule by ID
-   * @param {string} scheduleId 
+   * @param {string|number} scheduleId 
    */
   getSchedule(scheduleId) {
     this._ensureInitialized();
@@ -501,8 +559,8 @@ class RuleEngine {
   }
 
   /**
-   * Manually trigger a schedule (for testing)
-   * @param {string} scheduleId 
+   * Manually trigger a schedule
+   * @param {string|number} scheduleId 
    */
   async manuallyTriggerSchedule(scheduleId) {
     this._ensureInitialized();
@@ -537,7 +595,52 @@ class RuleEngine {
     return this.scheduleManager.startAll();
   }
 
-  // ========== END SCHEDULE MANAGEMENT ==========
+  /**
+   * Refresh all database schedules
+   */
+  async refreshDatabaseSchedules() {
+    this._ensureInitialized();
+    
+    return this.scheduleManager.refreshDatabaseSchedules();
+  }
+
+  /**
+   * Enable database-backed scheduling for a rule chain
+   * @param {number} ruleChainId - Rule chain ID
+   * @param {string} cronExpression - Cron expression
+   * @param {Object} options - Schedule options
+   */
+  async enableRuleChainSchedule(ruleChainId, cronExpression, options = {}) {
+    this._ensureInitialized();
+    
+    return this.scheduleManager.addDatabaseSchedule(ruleChainId, {
+      cronExpression,
+      ...options
+    });
+  }
+
+  /**
+   * Disable database-backed scheduling for a rule chain
+   * @param {number} ruleChainId - Rule chain ID
+   */
+  async disableRuleChainSchedule(ruleChainId) {
+    this._ensureInitialized();
+    
+    return this.scheduleManager.removeDatabaseSchedule(ruleChainId);
+  }
+
+  /**
+   * Update database-backed scheduling for a rule chain
+   * @param {number} ruleChainId - Rule chain ID
+   * @param {Object} updates - Schedule updates
+   */
+  async updateRuleChainSchedule(ruleChainId, updates) {
+    this._ensureInitialized();
+    
+    return this.scheduleManager.updateDatabaseSchedule(ruleChainId, updates);
+  }
+
+  // ========== END ENHANCED SCHEDULE MANAGEMENT ==========
 }
 
 // Create singleton instance only if rule engine is not disabled

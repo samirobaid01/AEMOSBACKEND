@@ -21,7 +21,7 @@ async function exampleUsage() {
     // Example 1: Daily health check at 9 AM
     const dailyHealthCheck = ruleEngine.addSchedule({
       name: 'Daily System Health Check',
-      cronExpression: '0 9 * * *', // Every day at 9 AM
+      cronExpression: '*/10 * * * * *', // Every day at 9 AM
       organizationId: 1,
       enabled: true,
       metadata: {

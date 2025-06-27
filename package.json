@@ -54,6 +54,7 @@
     "joi": "^17.12.2",
     "jsonwebtoken": "^9.0.2",
     "mysql2": "^3.9.2",
+    "node-cron": "^4.1.1",
     "rate-limiter-flexible": "^7.1.0",
     "response-time": "^2.3.3",
     "sequelize": "^6.37.1",

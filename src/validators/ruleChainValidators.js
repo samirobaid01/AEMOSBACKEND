@@ -6,6 +6,9 @@ const createRuleChainSchema = Joi.object({
   description: Joi.string().allow(null),
   organizationId: Joi.number().integer().required(),
   
+  // NEW: Execution type to control when rule chain is triggered
+  executionType: Joi.string().valid('event-triggered', 'schedule-only', 'hybrid').default('hybrid'),
+  
   // Scheduling fields (optional)
   scheduleEnabled: Joi.boolean().default(false),
   cronExpression: Joi.string().max(100).when('scheduleEnabled', {
@@ -22,7 +25,9 @@ const createRuleChainSchema = Joi.object({
 
 const updateRuleChainSchema = Joi.object({
   name: Joi.string().max(100),
-  description: Joi.string().allow(null)
+  description: Joi.string().allow(null),
+  // NEW: Allow updating execution type
+  executionType: Joi.string().valid('event-triggered', 'schedule-only', 'hybrid')
 });
 
 const createRuleChainNodeSchema = Joi.object({

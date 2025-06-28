@@ -19,6 +19,12 @@ const RuleChain = sequelize.define('RuleChain', {
     type: DataTypes.TEXT,
     allowNull: true
   },
+  executionType: {
+    type: DataTypes.ENUM('event-triggered', 'schedule-only', 'hybrid'),
+    defaultValue: 'hybrid',
+    allowNull: false,
+    comment: 'Defines how the rule chain should be executed: event-triggered (only by events), schedule-only (only by schedules), or hybrid (both)'
+  },
   scheduleEnabled: {
     type: DataTypes.BOOLEAN,
     defaultValue: false,
@@ -89,6 +95,14 @@ const RuleChain = sequelize.define('RuleChain', {
     {
       fields: ['lastExecutedAt'],
       name: 'idx_rulechain_last_executed'
+    },
+    {
+      fields: ['executionType'],
+      name: 'idx_rulechain_execution_type'
+    },
+    {
+      fields: ['organizationId', 'executionType'],
+      name: 'idx_rulechain_org_execution_type'
     }
   ]
 });

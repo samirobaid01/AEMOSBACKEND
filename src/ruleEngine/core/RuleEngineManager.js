@@ -21,7 +21,8 @@ class RuleEngineManager {
       totalExecutionTime: 0,
       averageExecutionTime: 0,
       optimizationRatio: 0, // How many rules we avoided executing
-      lastProcessedAt: null
+      lastProcessedAt: null,
+      scheduleOnlyRulesSkipped: 0 // NEW: Track schedule-only rules skipped from event processing
     };
     
     // Circuit breaker for failing rule chains
@@ -99,7 +100,26 @@ class RuleEngineManager {
         return { status: 'no_rules', processed: 0 };
       }
       
-      // 2. Prepare execution data
+      // 2. Filter rule chains by execution type (exclude schedule-only)
+      const eventEligibleRuleChains = await this._filterEventEligibleRuleChains(relevantRuleChainIds);
+      
+      logger.info('🔍 DEBUG: Filtered rule chains by execution type', {
+        originalCount: relevantRuleChainIds.length,
+        eventEligibleCount: eventEligibleRuleChains.length,
+        skippedScheduleOnly: relevantRuleChainIds.length - eventEligibleRuleChains.length
+      });
+      
+      if (eventEligibleRuleChains.length === 0) {
+        logger.warn('⚠️ DEBUG: No event-eligible rule chains found (all are schedule-only)', {
+          sensorUuid,
+          organizationId,
+          skippedCount: relevantRuleChainIds.length
+        });
+        this.metrics.scheduleOnlyRulesSkipped += relevantRuleChainIds.length;
+        return { status: 'no_event_rules', processed: 0, skippedScheduleOnly: relevantRuleChainIds.length };
+      }
+      
+      // 3. Prepare execution data
       const rawData = {
         sensorData: [{
           UUID: sensorUuid,
@@ -109,16 +129,18 @@ class RuleEngineManager {
         deviceData: [] // Will be populated if needed
       };
       
-      // 3. Execute relevant rule chains
-      const results = await this._executeRuleChains(relevantRuleChainIds, rawData, organizationId);
+      // 4. Execute event-eligible rule chains
+      const results = await this._executeRuleChains(eventEligibleRuleChains, rawData, organizationId);
       
-      // 4. Update metrics
-      this._updateMetrics(startTime, relevantRuleChainIds.length, results.length);
+      // 5. Update metrics
+      this._updateMetrics(startTime, relevantRuleChainIds.length, results.length, relevantRuleChainIds.length - eventEligibleRuleChains.length);
       
       return {
         status: 'success',
         processed: results.length,
         relevantRuleChains: relevantRuleChainIds.length,
+        eventEligibleRuleChains: eventEligibleRuleChains.length,
+        skippedScheduleOnly: relevantRuleChainIds.length - eventEligibleRuleChains.length,
         results
       };
       
@@ -170,22 +192,36 @@ class RuleEngineManager {
         return { status: 'no_rules', processed: 0 };
       }
       
+      // Filter by execution type (exclude schedule-only)
+      const eventEligibleRuleChains = await this._filterEventEligibleRuleChains(Array.from(affectedRuleChains));
+      
+      if (eventEligibleRuleChains.length === 0) {
+        this.metrics.scheduleOnlyRulesSkipped += affectedRuleChains.size;
+        return { 
+          status: 'no_event_rules', 
+          processed: 0, 
+          skippedScheduleOnly: affectedRuleChains.size 
+        };
+      }
+      
       // Prepare batch execution data
       const rawData = {
         sensorData: Array.from(sensorDataMap.values()),
         deviceData: []
       };
       
-      // Execute affected rule chains with batch data
-      const results = await this._executeRuleChains(Array.from(affectedRuleChains), rawData, organizationId);
+      // Execute event-eligible rule chains with batch data
+      const results = await this._executeRuleChains(eventEligibleRuleChains, rawData, organizationId);
       
-      this._updateMetrics(startTime, affectedRuleChains.size, results.length);
+      this._updateMetrics(startTime, affectedRuleChains.size, results.length, affectedRuleChains.size - eventEligibleRuleChains.length);
       
       return {
         status: 'success',
         processed: results.length,
         batchSize: telemetryData.length,
         affectedRuleChains: affectedRuleChains.size,
+        eventEligibleRuleChains: eventEligibleRuleChains.length,
+        skippedScheduleOnly: affectedRuleChains.size - eventEligibleRuleChains.length,
         results
       };
       
@@ -219,6 +255,18 @@ class RuleEngineManager {
         return { status: 'no_rules', processed: 0 };
       }
       
+      // Filter by execution type (exclude schedule-only)
+      const eventEligibleRuleChains = await this._filterEventEligibleRuleChains(relevantRuleChainIds);
+      
+      if (eventEligibleRuleChains.length === 0) {
+        this.metrics.scheduleOnlyRulesSkipped += relevantRuleChainIds.length;
+        return { 
+          status: 'no_event_rules', 
+          processed: 0, 
+          skippedScheduleOnly: relevantRuleChainIds.length 
+        };
+      }
+      
       // Prepare execution data
       const rawData = {
         sensorData: [],
@@ -229,15 +277,17 @@ class RuleEngineManager {
         }]
       };
       
-      // Execute relevant rule chains
-      const results = await this._executeRuleChains(relevantRuleChainIds, rawData, organizationId);
+      // Execute event-eligible rule chains
+      const results = await this._executeRuleChains(eventEligibleRuleChains, rawData, organizationId);
       
-      this._updateMetrics(startTime, relevantRuleChainIds.length, results.length);
+      this._updateMetrics(startTime, relevantRuleChainIds.length, results.length, relevantRuleChainIds.length - eventEligibleRuleChains.length);
       
       return {
         status: 'success',
         processed: results.length,
         relevantRuleChains: relevantRuleChainIds.length,
+        eventEligibleRuleChains: eventEligibleRuleChains.length,
+        skippedScheduleOnly: relevantRuleChainIds.length - eventEligibleRuleChains.length,
         results
       };
       
@@ -269,18 +319,31 @@ class RuleEngineManager {
         return { status: 'no_rules', processed: 0 };
       }
       
+      // For scheduled events, filter to only include schedule-eligible rule chains
+      const scheduleEligibleRuleChains = await this._filterScheduleEligibleRuleChains(relevantRuleChainIds);
+      
+      if (scheduleEligibleRuleChains.length === 0) {
+        return { 
+          status: 'no_schedule_rules', 
+          processed: 0, 
+          skippedEventOnly: relevantRuleChainIds.length 
+        };
+      }
+      
       // For scheduled events, collect all required data
-      const rawData = await this._collectAllRequiredData(relevantRuleChainIds, organizationId);
+      const rawData = await this._collectAllRequiredData(scheduleEligibleRuleChains, organizationId);
       
-      // Execute relevant rule chains
-      const results = await this._executeRuleChains(relevantRuleChainIds, rawData, organizationId);
+      // Execute schedule-eligible rule chains
+      const results = await this._executeRuleChains(scheduleEligibleRuleChains, rawData, organizationId);
       
-      this._updateMetrics(startTime, relevantRuleChainIds.length, results.length);
+      this._updateMetrics(startTime, relevantRuleChainIds.length, results.length, relevantRuleChainIds.length - scheduleEligibleRuleChains.length);
       
       return {
         status: 'success',
         processed: results.length,
         relevantRuleChains: relevantRuleChainIds.length,
+        scheduleEligibleRuleChains: scheduleEligibleRuleChains.length,
+        skippedEventOnly: relevantRuleChainIds.length - scheduleEligibleRuleChains.length,
         results
       };
       
@@ -313,13 +376,16 @@ class RuleEngineManager {
         return { status: 'no_rules', processed: 0 };
       }
       
+      // For manual triggers, we execute all eligible rule chains regardless of execution type
+      // as manual triggers are explicit user actions
+      
       // Collect all required data for manual trigger
       const rawData = await this._collectAllRequiredData(relevantRuleChainIds, organizationId, entityUuids);
       
       // Execute rule chains
       const results = await this._executeRuleChains(relevantRuleChainIds, rawData, organizationId);
       
-      this._updateMetrics(startTime, relevantRuleChainIds.length, results.length);
+      this._updateMetrics(startTime, relevantRuleChainIds.length, results.length, 0);
       
       return {
         status: 'success',
@@ -373,6 +439,92 @@ class RuleEngineManager {
       triggeredBy: 'external_system',
       timestamp: eventData.timestamp
     });
+  }
+
+  /**
+   * Filter rule chains that are eligible for event-based execution
+   * Excludes 'schedule-only' rule chains
+   * @param {Array} ruleChainIds 
+   * @returns {Array} Filtered rule chain IDs
+   */
+  async _filterEventEligibleRuleChains(ruleChainIds) {
+    if (ruleChainIds.length === 0) return [];
+    
+    try {
+      // Get rule chains from database to check their executionType
+      const { RuleChain } = require('../../models/initModels');
+      
+      const ruleChains = await RuleChain.findAll({
+        where: {
+          id: ruleChainIds
+        },
+        attributes: ['id', 'executionType']
+      });
+      
+      // Filter to only include 'event-triggered' and 'hybrid' rule chains
+      const eventEligibleIds = ruleChains
+        .filter(rc => rc.executionType === 'event-triggered' || rc.executionType === 'hybrid')
+        .map(rc => rc.id);
+      
+      logger.debug('🔍 DEBUG: Event-eligible rule chains filtered', {
+        originalCount: ruleChainIds.length,
+        eventEligibleCount: eventEligibleIds.length,
+        filteredRuleChains: ruleChains.map(rc => ({
+          id: rc.id,
+          executionType: rc.executionType,
+          included: eventEligibleIds.includes(rc.id)
+        }))
+      });
+      
+      return eventEligibleIds;
+    } catch (error) {
+      logger.error('Error filtering event-eligible rule chains:', error);
+      // Fallback: return all rule chains if filtering fails
+      return ruleChainIds;
+    }
+  }
+
+  /**
+   * Filter rule chains that are eligible for schedule-based execution
+   * Excludes 'event-triggered' rule chains
+   * @param {Array} ruleChainIds 
+   * @returns {Array} Filtered rule chain IDs
+   */
+  async _filterScheduleEligibleRuleChains(ruleChainIds) {
+    if (ruleChainIds.length === 0) return [];
+    
+    try {
+      // Get rule chains from database to check their executionType
+      const { RuleChain } = require('../../models/initModels');
+      
+      const ruleChains = await RuleChain.findAll({
+        where: {
+          id: ruleChainIds
+        },
+        attributes: ['id', 'executionType']
+      });
+      
+      // Filter to only include 'schedule-only' and 'hybrid' rule chains
+      const scheduleEligibleIds = ruleChains
+        .filter(rc => rc.executionType === 'schedule-only' || rc.executionType === 'hybrid')
+        .map(rc => rc.id);
+      
+      logger.debug('📅 DEBUG: Schedule-eligible rule chains filtered', {
+        originalCount: ruleChainIds.length,
+        scheduleEligibleCount: scheduleEligibleIds.length,
+        filteredRuleChains: ruleChains.map(rc => ({
+          id: rc.id,
+          executionType: rc.executionType,
+          included: scheduleEligibleIds.includes(rc.id)
+        }))
+      });
+      
+      return scheduleEligibleIds;
+    } catch (error) {
+      logger.error('Error filtering schedule-eligible rule chains:', error);
+      // Fallback: return all rule chains if filtering fails
+      return ruleChainIds;
+    }
   }
 
   /**
@@ -481,10 +633,12 @@ class RuleEngineManager {
    * @param {number} startTime 
    * @param {number} totalRuleChains 
    * @param {number} executedRuleChains 
+   * @param {number} skippedRuleChains 
    */
-  _updateMetrics(startTime, totalRuleChains, executedRuleChains) {
+  _updateMetrics(startTime, totalRuleChains, executedRuleChains, skippedRuleChains = 0) {
     this.metrics.eventsProcessed++;
     this.metrics.rulesExecuted += executedRuleChains;
+    this.metrics.scheduleOnlyRulesSkipped += skippedRuleChains;
     this.metrics.lastProcessedAt = new Date();
     
     const executionTime = Date.now() - startTime;
@@ -579,7 +733,8 @@ class RuleEngineManager {
       totalExecutionTime: 0,
       averageExecutionTime: 0,
       optimizationRatio: 0,
-      lastProcessedAt: null
+      lastProcessedAt: null,
+      scheduleOnlyRulesSkipped: 0
     };
     
     logger.info('RuleEngineManager metrics reset');

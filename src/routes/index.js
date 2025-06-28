@@ -846,12 +846,36 @@ router.get('/insomnia', localhostOnly, (req, res) => {
       { 
         method: 'POST', 
         path: '/rule-chains', 
-        description: 'Create a new rule chain', 
+        description: 'Create a new rule chain with optional scheduling configuration', 
         auth: true,
         permissions: ['rule.create'],
         params: {
-          name: "Rule Chain Name",
-          description: "Rule chain description",
+          name: "Complete Temperature Monitoring Rule Chain",
+          description: "Monitor temperature and trigger cooling with automatic scheduling",
+          organizationId: 1,
+          scheduleEnabled: true,
+          cronExpression: "0 */5 * * * *",
+          timezone: "UTC",
+          priority: 8,
+          maxRetries: 3,
+          retryDelay: 1000,
+          scheduleMetadata: {
+            description: "Monitor temperature every 5 minutes",
+            alertThreshold: 30,
+            enabled: true,
+            category: "temperature_monitoring"
+          }
+        }
+      },
+      { 
+        method: 'POST', 
+        path: '/rule-chains', 
+        description: 'Create a basic rule chain without scheduling (minimal payload)', 
+        auth: true,
+        permissions: ['rule.create'],
+        params: {
+          name: "Simple Motion Detection Rule Chain",
+          description: "Basic motion detection without scheduling",
           organizationId: 1
         }
       },
@@ -895,8 +919,15 @@ router.get('/insomnia', localhostOnly, (req, res) => {
         permissions: ['rule.update'],
         params: {
           ruleChainId: 1,
+          name: "Temperature Filter",
           type: "filter",
-          config: "{}",
+          config: JSON.stringify({
+            sourceType: "sensor",
+            UUID: "550e8400-e29b-41d4-a716-446655440000",
+            key: "temperature",
+            operator: ">",
+            value: 30
+          }),
           nextNodeId: null
         }
       },
@@ -914,8 +945,15 @@ router.get('/insomnia', localhostOnly, (req, res) => {
         auth: true,
         permissions: ['rule.update'],
         params: {
+          name: "Updated Temperature Filter",
           type: "filter",
-          config: "{}",
+          config: JSON.stringify({
+            sourceType: "sensor",
+            UUID: "550e8400-e29b-41d4-a716-446655440000",
+            key: "temperature",
+            operator: ">=",
+            value: 25
+          }),
           nextNodeId: null
         }
       },
@@ -925,6 +963,132 @@ router.get('/insomnia', localhostOnly, (req, res) => {
         description: 'Delete rule chain node',
         auth: true,
         permissions: ['rule.delete']
+      },
+      {
+        method: 'POST',
+        path: '/rule-chains/:id/execute',
+        description: 'Execute rule chain with provided data',
+        auth: true,
+        permissions: ['rule.update'],
+        params: {
+          sensorData: [
+            {
+              UUID: "550e8400-e29b-41d4-a716-446655440000",
+              temperature: 32.5,
+              humidity: 65.2,
+              timestamp: new Date().toISOString()
+            }
+          ],
+          deviceData: [
+            {
+              UUID: "660e8400-e29b-41d4-a716-446655440001",
+              power: "on",
+              speed: "high",
+              timestamp: new Date().toISOString()
+            }
+          ]
+        }
+      },
+      {
+        method: 'POST',
+        path: '/rule-chains/:id/trigger',
+        description: 'Manually trigger rule chain execution',
+        auth: true,
+        permissions: ['rule.update'],
+        query: {
+          organizationId: 1
+        }
+      },
+      // ========== RULE CHAIN SCHEDULING ENDPOINTS ==========
+      {
+        method: 'GET',
+        path: '/rule-chains/scheduled',
+        description: 'Get all scheduled rule chains for organization',
+        auth: true,
+        permissions: ['rule.view'],
+        query: {
+          organizationId: 1
+        }
+      },
+      {
+        method: 'GET',
+        path: '/rule-chains/:id/schedule',
+        description: 'Get schedule information for a specific rule chain',
+        auth: true,
+        permissions: ['rule.view']
+      },
+      {
+        method: 'PUT',
+        path: '/rule-chains/:id/schedule/enable',
+        description: 'Enable scheduling for a rule chain with cron expression',
+        auth: true,
+        permissions: ['rule.update'],
+        params: {
+          cronExpression: "0 */5 * * * *",
+          timezone: "UTC",
+          priority: 5,
+          maxRetries: 3,
+          retryDelay: 1000,
+          metadata: {
+            description: "Monitor temperature every 5 minutes",
+            alertThreshold: 30,
+            enabled: true
+          }
+        }
+      },
+      {
+        method: 'PUT',
+        path: '/rule-chains/:id/schedule/disable',
+        description: 'Disable scheduling for a rule chain',
+        auth: true,
+        permissions: ['rule.update']
+      },
+      {
+        method: 'PATCH',
+        path: '/rule-chains/:id/schedule',
+        description: 'Update schedule settings for a rule chain',
+        auth: true,
+        permissions: ['rule.update'],
+        params: {
+          cronExpression: "0 */10 * * * *",
+          priority: 8,
+          maxRetries: 5,
+          retryDelay: 2000,
+          scheduleMetadata: {
+            description: "Updated to run every 10 minutes",
+            alertThreshold: 35,
+            lastModified: new Date().toISOString()
+          }
+        }
+      },
+      {
+        method: 'POST',
+        path: '/rule-chains/:id/schedule/trigger',
+        description: 'Manually trigger a scheduled rule chain',
+        auth: true,
+        permissions: ['rule.update']
+      },
+      // ========== DEBUG ENDPOINTS ==========
+      {
+        method: 'GET',
+        path: '/rule-chains/debug/schedule-stats',
+        description: 'Get ScheduleManager statistics and status (for debugging)',
+        auth: true,
+        permissions: ['rule.view']
+      },
+      {
+        method: 'POST',
+        path: '/rule-chains/:id/debug/sync-schedule',
+        description: 'Manually sync a specific rule chain schedule with ScheduleManager',
+        auth: true,
+        permissions: ['rule.update']
+      },
+      {
+        method: 'POST',
+        path: '/rule-chains/debug/refresh-all-schedules',
+        description: 'Refresh all schedules from database (for troubleshooting)',
+        auth: true,
+        permissions: ['rule.update']
       }
     ]
   };

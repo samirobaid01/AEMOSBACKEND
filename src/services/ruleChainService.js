@@ -935,30 +935,30 @@ class RuleChainService {
    * @param {number} organizationId - Organization ID
    * @returns {Promise} Results of rule chain executions
    */
-  async trigger(organizationId=1) {
+  async trigger(organizationId = 1, ruleChainId = null) {
     try {
       // Find all applicable rule chains
       const whereClause = {
         organizationId,
       };
 
-      if (organizationId) {
-        whereClause.organizationId = organizationId;
+      if (ruleChainId) {
+        whereClause.id = ruleChainId;
       }
 
-        const ruleChains = await RuleChain.findAll({
-          where: whereClause,
-          include: [
-            {
-              model: RuleChainNode,
-              as: 'nodes',
-            },
-          ],
-        });
+      const ruleChains = await RuleChain.findAll({
+        where: whereClause,
+        include: [
+          {
+            model: RuleChainNode,
+            as: 'nodes',
+          },
+        ],
+      });
 
-        if (!ruleChains || ruleChains.length === 0) {
-          throw new Error(`No rule chains found for organization ${organizationId}`);
-        }
+      if (!ruleChains || ruleChains.length === 0) {
+        throw new Error(`No rule chains found for organization ${organizationId}${ruleChainId ? ` and rule chain ${ruleChainId}` : ''}`);
+      }
 
       // Process each rule chain
       const results = [];
@@ -1079,6 +1079,202 @@ class RuleChainService {
       throw new Error(`Rule chain trigger failed: ${error.message}`);
     }
   }
+
+  // ========== SCHEDULE MANAGEMENT METHODS ==========
+
+  /**
+   * Enable scheduling for a rule chain
+   * @param {number} ruleChainId - Rule chain ID
+   * @param {string} cronExpression - Cron expression for scheduling
+   * @param {Object} options - Schedule options
+   * @returns {Promise<Object>} Updated rule chain
+   */
+  async enableSchedule(ruleChainId, cronExpression, options = {}) {
+    try {
+      const ruleChain = await RuleChain.findByPk(ruleChainId);
+      if (!ruleChain) {
+        throw new Error('Rule chain not found');
+      }
+
+      // Validate cron expression (basic validation)
+      if (!cronExpression || typeof cronExpression !== 'string') {
+        throw new Error('Valid cron expression is required');
+      }
+
+      const updateData = {
+        scheduleEnabled: true,
+        cronExpression,
+        timezone: options.timezone || 'UTC',
+        priority: options.priority || 0,
+        maxRetries: options.maxRetries || 0,
+        retryDelay: options.retryDelay || 0,
+        scheduleMetadata: options.metadata || null
+      };
+
+      const updatedRuleChain = await ruleChain.update(updateData);
+      return updatedRuleChain;
+    } catch (error) {
+      throw new Error(`Failed to enable schedule: ${error.message}`);
+    }
+  }
+
+  /**
+   * Disable scheduling for a rule chain
+   * @param {number} ruleChainId - Rule chain ID
+   * @returns {Promise<Object>} Updated rule chain
+   */
+  async disableSchedule(ruleChainId) {
+    try {
+      const ruleChain = await RuleChain.findByPk(ruleChainId);
+      if (!ruleChain) {
+        throw new Error('Rule chain not found');
+      }
+
+      const updatedRuleChain = await ruleChain.update({ 
+        scheduleEnabled: false 
+      });
+      return updatedRuleChain;
+    } catch (error) {
+      throw new Error(`Failed to disable schedule: ${error.message}`);
+    }
+  }
+
+  /**
+   * Update schedule settings for a rule chain
+   * @param {number} ruleChainId - Rule chain ID
+   * @param {Object} scheduleData - Schedule data to update
+   * @returns {Promise<Object>} Updated rule chain
+   */
+  async updateSchedule(ruleChainId, scheduleData) {
+    try {
+      const ruleChain = await RuleChain.findByPk(ruleChainId);
+      if (!ruleChain) {
+        throw new Error('Rule chain not found');
+      }
+
+      // Only allow updating schedule-related fields
+      const allowedFields = [
+        'cronExpression', 'timezone', 'priority', 'maxRetries', 
+        'retryDelay', 'scheduleMetadata'
+      ];
+      
+      const updateData = {};
+      for (const field of allowedFields) {
+        if (scheduleData[field] !== undefined) {
+          updateData[field] = scheduleData[field];
+        }
+      }
+
+      if (Object.keys(updateData).length === 0) {
+        throw new Error('No valid schedule fields provided for update');
+      }
+
+      const updatedRuleChain = await ruleChain.update(updateData);
+      return updatedRuleChain;
+    } catch (error) {
+      throw new Error(`Failed to update schedule: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get all scheduled rule chains for an organization
+   * @param {number} organizationId - Organization ID (optional)
+   * @returns {Promise<Array>} Array of scheduled rule chains
+   */
+  async getScheduledRuleChains(organizationId = null) {
+    try {
+      const whereClause = { scheduleEnabled: true };
+      if (organizationId) {
+        whereClause.organizationId = organizationId;
+      }
+
+      const scheduledRuleChains = await RuleChain.findAll({
+        where: whereClause,
+        include: [
+          {
+            model: RuleChainNode,
+            as: 'nodes',
+          },
+        ],
+        order: [['priority', 'DESC'], ['name', 'ASC']]
+      });
+
+      return scheduledRuleChains;
+    } catch (error) {
+      throw new Error(`Failed to get scheduled rule chains: ${error.message}`);
+    }
+  }
+
+  /**
+   * Update execution statistics for a rule chain
+   * @param {number} ruleChainId - Rule chain ID
+   * @param {boolean} success - Whether execution was successful
+   * @param {Error} error - Error object if execution failed
+   * @returns {Promise<void>}
+   */
+  async updateExecutionStats(ruleChainId, success = true, error = null) {
+    try {
+      const updateData = {
+        lastExecutedAt: new Date(),
+        executionCount: sequelize.literal('executionCount + 1')
+      };
+
+      if (!success) {
+        updateData.failureCount = sequelize.literal('failureCount + 1');
+        updateData.lastErrorAt = new Date();
+      }
+
+      await RuleChain.update(updateData, {
+        where: { id: ruleChainId }
+      });
+    } catch (error) {
+      console.error(`Failed to update execution stats for rule chain ${ruleChainId}:`, error);
+    }
+  }
+
+  /**
+   * Get schedule information for a rule chain
+   * @param {number} ruleChainId - Rule chain ID
+   * @returns {Promise<Object>} Schedule information
+   */
+  async getScheduleInfo(ruleChainId) {
+    try {
+      const ruleChain = await RuleChain.findByPk(ruleChainId, {
+        attributes: [
+          'id', 'name', 'scheduleEnabled', 'cronExpression', 'timezone',
+          'priority', 'maxRetries', 'retryDelay', 'scheduleMetadata',
+          'lastExecutedAt', 'lastErrorAt', 'executionCount', 'failureCount'
+        ]
+      });
+
+      if (!ruleChain) {
+        throw new Error('Rule chain not found');
+      }
+
+      return {
+        ruleChainId: ruleChain.id,
+        ruleChainName: ruleChain.name,
+        scheduleEnabled: ruleChain.scheduleEnabled,
+        cronExpression: ruleChain.cronExpression,
+        timezone: ruleChain.timezone,
+        priority: ruleChain.priority,
+        maxRetries: ruleChain.maxRetries,
+        retryDelay: ruleChain.retryDelay,
+        scheduleMetadata: ruleChain.scheduleMetadata,
+        lastExecutedAt: ruleChain.lastExecutedAt,
+        lastErrorAt: ruleChain.lastErrorAt,
+        executionCount: ruleChain.executionCount,
+        failureCount: ruleChain.failureCount,
+        successRate: ruleChain.executionCount > 0 
+          ? ((ruleChain.executionCount - ruleChain.failureCount) / ruleChain.executionCount * 100).toFixed(2)
+          : 0
+      };
+    } catch (error) {
+      throw new Error(`Failed to get schedule info: ${error.message}`);
+    }
+  }
+
+  // ========== END SCHEDULE MANAGEMENT ==========
 }
 
 module.exports = {

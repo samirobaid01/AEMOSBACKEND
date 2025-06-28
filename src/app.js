@@ -129,6 +129,75 @@ app.get('/api/v1/health/live', (req, res) => {
   res.status(200).json({ status: 'alive' });
 });
 
+// Rule engine endpoints - defined BEFORE index routes to ensure precedence
+app.get('/api/v1/rule-engine/health', (req, res) => {
+  try {
+    // Only import rule engine if not disabled
+    if (process.env.DISABLE_RULE_ENGINE === 'true') {
+      return res.status(503).json({
+        status: 'error',
+        message: 'Rule engine disabled via environment variable'
+      });
+    }
+    
+    // Try to require the rule engine - this will work after server initialization
+    const { ruleEngine } = require('./ruleEngine');
+    
+    if (ruleEngine && ruleEngine.getHealthStatus) {
+      const healthStatus = ruleEngine.getHealthStatus();
+      res.status(200).json({
+        status: 'success',
+        data: healthStatus
+      });
+    } else {
+      res.status(503).json({
+        status: 'error',
+        message: 'Rule engine not yet initialized'
+      });
+    }
+  } catch (error) {
+    res.status(503).json({
+      status: 'error',
+      message: 'Rule engine not available',
+      error: error.message
+    });
+  }
+});
+
+app.get('/api/v1/rule-engine/metrics', (req, res) => {
+  try {
+    // Only import rule engine if not disabled
+    if (process.env.DISABLE_RULE_ENGINE === 'true') {
+      return res.status(503).json({
+        status: 'error',
+        message: 'Rule engine disabled via environment variable'
+      });
+    }
+    
+    // Try to require the rule engine - this will work after server initialization
+    const { ruleEngine } = require('./ruleEngine');
+    
+    if (ruleEngine && ruleEngine.getMetrics) {
+      const metrics = ruleEngine.getMetrics();
+      res.status(200).json({
+        status: 'success',
+        data: metrics
+      });
+    } else {
+      res.status(503).json({
+        status: 'error', 
+        message: 'Rule engine not yet initialized'
+      });
+    }
+  } catch (error) {
+    res.status(503).json({
+      status: 'error',
+      message: 'Rule engine not available',
+      error: error.message
+    });
+  }
+});
+
 // Mount index routes first
 app.use('/api/v1', indexRoutes);
 
@@ -164,19 +233,6 @@ app.get('/api/v1/app-device-token-test', (req, res) => {
   });
 });
 
-// Log all registered routes for debugging
-console.log('All routes registered:');
-function print (path, layer) {
-  if (layer.route) {
-    layer.route.stack.forEach(print.bind(null, path.concat(path.length ? ' -> ' : '', layer.route.path)));
-  } else if (layer.name === 'router' && layer.handle.stack) {
-    layer.handle.stack.forEach(print.bind(null, path.concat(path.length ? ' -> ' : '', layer.regexp)));
-  } else if (layer.method) {
-    console.log('%s %s', layer.method.toUpperCase(), path.concat(path.length ? ' -> ' : '', layer.regexp, ' - ', layer.name));
-  }
-}
-app._router.stack.forEach(print.bind(null, ''));
-
 // Test route to verify server is working
 app.get('/test', (req, res) => {
   console.log('Test route hit!');
@@ -186,7 +242,7 @@ app.get('/test', (req, res) => {
   });
 });
 
-// Handle undefined routes
+// Handle undefined routes - this should be the LAST route
 app.use('*', (req, res) => {
   res.status(404).json({
     status: 'error',

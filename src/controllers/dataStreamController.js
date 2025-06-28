@@ -6,7 +6,19 @@ const TelemetryData = require('../models/TelemetryData');
 const DataStream = require('../models/DataStream');
 const logger = require('../utils/logger');
 const socketManager = require('../utils/socketManager');
-const {ruleChainService} = require('../services/ruleChainService');
+
+// Import rule engine with error handling
+let ruleEngine = null;
+let EventTypes = null;
+let EventSources = null;
+try {
+  const ruleEngineModule = require('../ruleEngine');
+  ruleEngine = ruleEngineModule.ruleEngine;
+  EventTypes = ruleEngineModule.EventTypes;
+  EventSources = ruleEngineModule.EventSources;
+} catch (error) {
+  logger.warn('Rule engine import failed in dataStreamController, telemetry events will be skipped:', error.message);
+}
 
 // Get all data streams
 const getAllDataStreams = async (req, res, next) => {
@@ -77,17 +89,82 @@ const createDataStream = async (req, res, next) => {
     });
 
     // Queue notification asynchronously (after response sent)
-    process.nextTick(() => {
-      // Determine priority based on business rules
-      // For example, if there's an 'urgent' flag or value exceeds thresholds
-      const isPriority = req.body.urgent === true || 
-                        (req.body.thresholds && isThresholdExceeded(req.body.value, req.body.thresholds));
-      
-      notificationManager.queueDataStreamNotification(
-        dataStream, 
-        isPriority ? 'high' : 'normal',
-        config.broadcastAll
-      );
+    process.nextTick(async () => {
+      try {
+        // Determine priority based on business rules
+        const isPriority = req.body.urgent === true || 
+                          (req.body.thresholds && isThresholdExceeded(req.body.value, req.body.thresholds));
+        
+        notificationManager.queueDataStreamNotification(
+          dataStream, 
+          isPriority ? 'high' : 'normal',
+          config.broadcastAll
+        );
+
+        // Get telemetry data details for the event
+        const telemetryData = await TelemetryData.findByPk(dataStream.telemetryDataId, {
+          include: [{
+            model: require('../models/Sensor'),
+            as: 'Sensor'
+          }]
+        });
+
+        if (telemetryData && telemetryData.Sensor) {
+          logger.info('🔍 DEBUG: About to emit telemetry event', {
+            sensorUuid: telemetryData.Sensor.uuid,
+            telemetryDataId: dataStream.telemetryDataId,
+            variableName: telemetryData.variableName,
+            value: dataStream.value,
+            datatype: telemetryData.datatype,
+            organizationId: req.user?.organizationId || 1,
+            ruleEngineAvailable: true,
+            sensorUuidDefined: !!telemetryData.Sensor.uuid,
+            sensorObject: {
+              id: telemetryData.Sensor.id,
+              UUID: telemetryData.Sensor.uuid,
+              name: telemetryData.Sensor.name
+            }
+          });
+
+          // Validate sensor UUID before emitting event
+          if (!telemetryData.Sensor.uuid) {
+            logger.error('❌ DEBUG: Sensor UUID is undefined/null', {
+              sensorId: telemetryData.Sensor.id,
+              sensorName: telemetryData.Sensor.name,
+              telemetryDataId: dataStream.telemetryDataId,
+              fullSensorObject: telemetryData.Sensor
+            });
+            return; // Don't emit event if UUID is missing
+          }
+
+          if (ruleEngine && EventTypes && EventSources) {
+            ruleEngine.emitTelemetryEvent({
+              sensorUuid: telemetryData.Sensor.uuid,
+              telemetryDataId: dataStream.telemetryDataId,
+              variableName: telemetryData.variableName,
+              value: dataStream.value,
+              datatype: telemetryData.datatype,
+              timestamp: dataStream.recievedAt,
+              organizationId: req.user?.organizationId || 1, // Use from auth context
+              metadata: {
+                source: EventSources.HTTP_API,
+                priority: isPriority ? 'high' : 'normal',
+                urgent: req.body.urgent || false
+              }
+            });
+          } else {
+            logger.debug('Rule engine not available, skipping telemetry event emission');
+          }
+        } else {
+          logger.error('❌ DEBUG: Missing telemetry data or sensor', {
+            hasTelemetryData: !!telemetryData,
+            hasSensor: telemetryData ? !!telemetryData.Sensor : false,
+            telemetryDataId: dataStream.telemetryDataId
+          });
+        }
+      } catch (error) {
+        logger.error('Error in async processing after dataStream creation:', error);
+      }
     });
   } catch (error) {
     next(error);
@@ -113,8 +190,41 @@ const updateDataStream = async (req, res, next) => {
     });
 
     // Queue notification asynchronously (after response sent)
-    process.nextTick(() => {
-      notificationManager.queueDataStreamNotification(dataStream, 'normal', config.broadcastAll);
+    process.nextTick(async () => {
+      try {
+        notificationManager.queueDataStreamNotification(dataStream, 'normal', config.broadcastAll);
+
+        // Get telemetry data details for the event
+        const telemetryData = await TelemetryData.findByPk(dataStream.telemetryDataId, {
+          include: [{
+            model: require('../models/Sensor'),
+            as: 'Sensor'
+          }]
+        });
+
+        if (telemetryData && telemetryData.Sensor) {
+          if (ruleEngine && EventTypes && EventSources) {
+            ruleEngine.emitTelemetryEvent({
+              sensorUuid: telemetryData.Sensor.uuid,
+              telemetryDataId: dataStream.telemetryDataId,
+              variableName: telemetryData.variableName,
+              value: dataStream.value,
+              datatype: telemetryData.datatype,
+              timestamp: dataStream.recievedAt,
+              organizationId: req.user?.organizationId || 1,
+              metadata: {
+                source: EventSources.HTTP_API,
+                priority: 'normal',
+                urgent: false
+              }
+            });
+          } else {
+            logger.debug('Rule engine not available, skipping telemetry event emission');
+          }
+        }
+      } catch (error) {
+        logger.error('Error in async processing after dataStream update:', error);
+      }
     });
   } catch (error) {
     next(error);
@@ -188,38 +298,84 @@ const createBatchDataStreams = async (req, res, next) => {
       },
     });
 
-    // Process notifications asynchronously after response
-    process.nextTick(() => {
-      // Handle notifications in chunks to avoid blocking
-      const processChunk = (items, index = 0, chunkSize = 20) => {
-        const chunk = items.slice(index, index + chunkSize);
-        
-        if (chunk.length === 0) return;
-        
-        // Process this chunk
-        chunk.forEach(dataStream => {
-          // Check if this dataStream requires priority handling
-          const isPriority = 
-            dataStream.urgent === true || 
-            (dataStream.thresholds && isThresholdExceeded(dataStream.value, dataStream.thresholds));
+    // Process notifications and rule engine events asynchronously after response
+    process.nextTick(async () => {
+      try {
+        // Prepare batch telemetry data for rule engine
+        const telemetryDataItems = [];
+
+        // Handle notifications in chunks to avoid blocking
+        const processChunk = async (items, index = 0, chunkSize = 20) => {
+          const chunk = items.slice(index, index + chunkSize);
           
-          notificationManager.queueDataStreamNotification(
-            dataStream,
-            isPriority ? 'high' : 'normal',
-            config.broadcastAll
-          );
-        });
+          if (chunk.length === 0) return;
+          
+          // Process this chunk
+          for (const dataStream of chunk) {
+            try {
+              // Check if this dataStream requires priority handling
+              const isPriority = 
+                dataStream.urgent === true || 
+                (dataStream.thresholds && isThresholdExceeded(dataStream.value, dataStream.thresholds));
+              
+              notificationManager.queueDataStreamNotification(
+                dataStream,
+                isPriority ? 'high' : 'normal',
+                config.broadcastAll
+              );
+
+              // Collect telemetry data for batch event
+              const telemetryData = await TelemetryData.findByPk(dataStream.telemetryDataId, {
+                include: [{
+                  model: require('../models/Sensor'),
+                  as: 'Sensor'
+                }]
+              });
+
+              if (telemetryData && telemetryData.Sensor) {
+                telemetryDataItems.push({
+                  sensorUuid: telemetryData.Sensor.uuid,
+                  telemetryDataId: dataStream.telemetryDataId,
+                  variableName: telemetryData.variableName,
+                  value: dataStream.value,
+                  datatype: telemetryData.datatype,
+                  timestamp: dataStream.recievedAt
+                });
+              }
+            } catch (error) {
+              logger.error('Error processing dataStream in batch:', error);
+            }
+          }
+          
+          // Schedule next chunk if needed
+          if (index + chunkSize < items.length) {
+            setTimeout(() => {
+              processChunk(items, index + chunkSize, chunkSize);
+            }, 10); // Small delay to avoid blocking the event loop
+          } else {
+            // Emit batch telemetry event after processing all chunks
+            if (telemetryDataItems.length > 0) {
+              if (ruleEngine && EventTypes && EventSources) {
+                ruleEngine.emitBatchTelemetryEvent({
+                  telemetryData: telemetryDataItems,
+                  organizationId: req.user?.organizationId || 1,
+                  timestamp: new Date(),
+                  metadata: {
+                    source: EventSources.BATCH_PROCESS,
+                    priority: 'normal',
+                    batchSize: telemetryDataItems.length
+                  }
+                });
+              }
+            }
+          }
+        };
         
-        // Schedule next chunk if needed
-        if (index + chunkSize < items.length) {
-          setTimeout(() => {
-            processChunk(items, index + chunkSize, chunkSize);
-          }, 10); // Small delay to avoid blocking the event loop
-        }
-      };
-      
-      // Start processing in chunks
-      processChunk(createdStreams);
+        // Start processing in chunks
+        await processChunk(createdStreams);
+      } catch (error) {
+        logger.error('Error in async batch processing:', error);
+      }
     });
   } catch (error) {
     next(error);
@@ -240,7 +396,11 @@ const createDataStreamWithToken = async (req, res) => {
       where: { 
         id: telemetryDataId,
         sensorId: sensorId
-      }
+      },
+      include: [{
+        model: require('../models/Sensor'),
+        as: 'Sensor'
+      }]
     });
     
     if (!telemetryData) {
@@ -261,18 +421,91 @@ const createDataStreamWithToken = async (req, res) => {
       status: 'success',
       data: newDataStream
     });
-    process.nextTick(() => {
-      // Determine priority based on business rules
-      // For example, if there's an 'urgent' flag or value exceeds thresholds
-      const isPriority = req.body.urgent === true || 
-                        (req.body.thresholds && isThresholdExceeded(req.body.value, req.body.thresholds));
+    // code to be removed
+
+    // process.nextTick(() => {
+    //   // Determine priority based on business rules
+    //   // For example, if there's an 'urgent' flag or value exceeds thresholds
+    //   const isPriority = req.body.urgent === true || 
+    //                     (req.body.thresholds && isThresholdExceeded(req.body.value, req.body.thresholds));
       
-      notificationManager.queueDataStreamNotification(
-        newDataStream, 
-        isPriority ? 'high' : 'normal',
-        config.broadcastAll
-      );
-      ruleChainService.trigger();
+    //   notificationManager.queueDataStreamNotification(
+    //     newDataStream, 
+    //     isPriority ? 'high' : 'normal',
+    //     config.broadcastAll
+    //   );
+    //   ruleChainService.trigger();
+    // above code to be removed
+
+    process.nextTick(async () => {
+      try {
+        // Determine priority based on business rules
+        const isPriority = req.body.urgent === true || 
+                          (req.body.thresholds && isThresholdExceeded(req.body.value, req.body.thresholds));
+        
+        notificationManager.queueDataStreamNotification(
+          newDataStream, 
+          isPriority ? 'high' : 'normal',
+          config.broadcastAll
+        );
+
+        // Get telemetry data details for the event
+        if (telemetryData.Sensor) {
+          logger.info('🔍 DEBUG: About to emit telemetry event (TOKEN AUTH)', {
+            sensorUuid: telemetryData.Sensor.uuid,
+            telemetryDataId: newDataStream.telemetryDataId,
+            variableName: telemetryData.variableName,
+            value: newDataStream.value,
+            datatype: telemetryData.datatype,
+            organizationId: telemetryData.Sensor.organizationId || 1,
+            ruleEngineAvailable: true,
+            sensorUuidDefined: !!telemetryData.Sensor.uuid,
+            sensorObject: {
+              id: telemetryData.Sensor.id,
+              UUID: telemetryData.Sensor.uuid,
+              name: telemetryData.Sensor.name
+            }
+          });
+
+          // Validate sensor UUID before emitting event
+          if (!telemetryData.Sensor.uuid) {
+            logger.error('❌ DEBUG: Sensor UUID is undefined/null (TOKEN AUTH)', {
+              sensorId: telemetryData.Sensor.id,
+              sensorName: telemetryData.Sensor.name,
+              telemetryDataId: newDataStream.telemetryDataId,
+              fullSensorObject: telemetryData.Sensor
+            });
+            return; // Don't emit event if UUID is missing
+          }
+
+          if (ruleEngine && EventTypes && EventSources) {
+            ruleEngine.emitTelemetryEvent({
+              sensorUuid: telemetryData.Sensor.uuid,
+              telemetryDataId: newDataStream.telemetryDataId,
+              variableName: telemetryData.variableName,
+              value: newDataStream.value,
+              datatype: telemetryData.datatype,
+              timestamp: newDataStream.recievedAt,
+              organizationId: telemetryData.Sensor.organizationId || 1, // Get from sensor
+              metadata: {
+                source: EventSources.TOKEN_AUTH,
+                priority: isPriority ? 'high' : 'normal',
+                urgent: req.body.urgent || false
+              }
+            });
+          } else {
+            logger.debug('Rule engine not available, skipping telemetry event emission (TOKEN AUTH)');
+          }
+        } else {
+          logger.error('❌ DEBUG: Missing sensor data in telemetry (TOKEN AUTH)', {
+            hasTelemetryData: !!telemetryData,
+            hasSensor: !!telemetryData.Sensor,
+            telemetryDataId: newDataStream.telemetryDataId
+          });
+        }
+      } catch (error) {
+        logger.error('Error in async processing after token dataStream creation:', error);
+      }
     });
     
   } catch (error) {

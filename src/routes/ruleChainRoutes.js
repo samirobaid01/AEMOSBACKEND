@@ -1,210 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const { authenticate } = require('../middlewares/auth');
-const { checkPermission, checkResourceOwnership, checkOrgPermission } = require('../middlewares/permission');
-const { ruleChainService, getRuleChainForOwnershipCheck, getRuleChainNodeForOwnershipCheck } = require('../services/ruleChainService');
+const { checkPermission, checkResourceOwnership } = require('../middlewares/permission');
+const { getRuleChainForOwnershipCheck, getRuleChainNodeForOwnershipCheck } = require('../services/ruleChainService');
+const ruleChainController = require('../controllers/ruleChainController');
 const validate = require('../middlewares/validate');
 const { querySchema } = require('../validators/ruleChainValidators');
-
-// Request handlers
-const getAllChains = async (req, res) => {
-  try {
-    const { organizationId } = req.query;
-    const ruleChains = await ruleChainService.findAllChains(organizationId);
-    res.json({
-      status: 'success',
-      data: ruleChains
-    });
-  } catch (error) {
-    res.status(500).json({
-      status: 'error',
-      message: error.message
-    });
-  }
-};
-
-const createChain = async (req, res) => {
-  try {
-    const ruleChain = await ruleChainService.createChain(req.body);
-    res.status(201).json({
-      status: 'success',
-      data: ruleChain
-    });
-  } catch (error) {
-    res.status(500).json({
-      status: 'error',
-      message: error.message
-    });
-  }
-};
-
-const getChainById = async (req, res) => {
-  try {
-    const ruleChain = await ruleChainService.findChainById(req.params.id);
-    if (!ruleChain) {
-      return res.status(404).json({
-        status: 'error',
-        message: 'Rule chain not found'
-      });
-    }
-    res.json({
-      status: 'success',
-      data: ruleChain
-    });
-  } catch (error) {
-    res.status(500).json({
-      status: 'error',
-      message: error.message
-    });
-  }
-};
-
-const updateChain = async (req, res) => {
-  try {
-    const ruleChain = await ruleChainService.updateChain(req.params.id, req.body);
-    res.json({
-      status: 'success',
-      data: ruleChain
-    });
-  } catch (error) {
-    res.status(500).json({
-      status: 'error',
-      message: error.message
-    });
-  }
-};
-
-const deleteChain = async (req, res) => {
-  try {
-    await ruleChainService.deleteChain(req.params.id);
-    res.status(204).send();
-  } catch (error) {
-    res.status(500).json({
-      status: 'error',
-      message: error.message
-    });
-  }
-};
-
-const getAllNodes = async (req, res) => {
-  try {
-    const nodes = await ruleChainService.findAllNodes(req.params.ruleChainId);
-    res.json({
-      status: 'success',
-      data: nodes
-    });
-  } catch (error) {
-    res.status(500).json({
-      status: 'error',
-      message: error.message
-    });
-  }
-};
-
-const createNode = async (req, res) => {
-  try {
-    const node = await ruleChainService.createNode(req.body);
-    res.status(201).json({
-      status: 'success',
-      data: node
-    });
-  } catch (error) {
-    res.status(500).json({
-      status: 'error',
-      message: error.message
-    });
-  }
-};
-
-const getNodeById = async (req, res) => {
-  try {
-    const node = await ruleChainService.findNodeById(req.params.id);
-    if (!node) {
-      return res.status(404).json({
-        status: 'error',
-        message: 'Node not found'
-      });
-    }
-    res.json({
-      status: 'success',
-      data: node
-    });
-  } catch (error) {
-    res.status(500).json({
-      status: 'error',
-      message: error.message
-    });
-  }
-};
-
-const updateNode = async (req, res) => {
-  try {
-    const node = await ruleChainService.updateNode(req.params.id, req.body);
-    res.json({
-      status: 'success',
-      data: node
-    });
-  } catch (error) {
-    res.status(500).json({
-      status: 'error',
-      message: error.message
-    });
-  }
-};
-
-const deleteNode = async (req, res) => {
-  try {
-    await ruleChainService.deleteNode(req.params.id);
-    res.status(204).send();
-  } catch (error) {
-    res.status(500).json({
-      status: 'error',
-      message: error.message
-    });
-  }
-};
-
-const executeChain = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const data = req.body;
-
-    if (!data) {
-      return res.status(400).json({
-        status: 'error',
-        message: 'Sensor data is required'
-      });
-    }
-
-    const result = await ruleChainService.execute(id, data);
-    res.json({
-      status: 'success',
-      data: result
-    });
-  } catch (error) {
-    res.status(500).json({
-      status: 'error',
-      message: error.message
-    });
-  }
-};
-
-const triggerChain = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { organizationId } = req.query;
-    const result = await ruleChainService.trigger(organizationId);
-    res.json({
-      status: 'success',
-      data: result
-    });
-  } catch (error) {
-    res.status(500).json({
-      status: 'error',
-      message: error.message
-    });
-  }
-};
 
 // RuleChain routes
 router
@@ -213,13 +14,180 @@ router
     authenticate,
     checkPermission('rule.view'),
     validate(querySchema, { query: true }),
-    getAllChains
+    ruleChainController.getAllChains
   )
   .post(
     authenticate,
     checkPermission('rule.create'),
-    createChain
+    ruleChainController.createChain
   );
+
+// ========== SCHEDULE ROUTES - Must be before ANY parameterized routes ==========
+
+// Get all scheduled rule chains
+router.get(
+  '/scheduled',
+  authenticate,
+  checkPermission('rule.view'),
+  ruleChainController.getScheduledRuleChains
+);
+
+// Get schedule information for a specific rule chain
+router.get(
+  '/:id/schedule',
+  authenticate,
+  checkPermission('rule.view'),
+  checkResourceOwnership(getRuleChainForOwnershipCheck),
+  ruleChainController.getScheduleInfo
+);
+
+// Enable scheduling for a rule chain
+router.put(
+  '/:id/schedule/enable',
+  authenticate,
+  checkPermission('rule.update'),
+  checkResourceOwnership(getRuleChainForOwnershipCheck),
+  ruleChainController.enableSchedule
+);
+
+// Disable scheduling for a rule chain
+router.put(
+  '/:id/schedule/disable',
+  authenticate,
+  checkPermission('rule.update'),
+  checkResourceOwnership(getRuleChainForOwnershipCheck),
+  ruleChainController.disableSchedule
+);
+
+// Update schedule settings for a rule chain
+router.patch(
+  '/:id/schedule',
+  authenticate,
+  checkPermission('rule.update'),
+  checkResourceOwnership(getRuleChainForOwnershipCheck),
+  ruleChainController.updateSchedule
+);
+
+// Manually trigger a scheduled rule chain
+router.post(
+  '/:id/schedule/trigger',
+  authenticate,
+  checkPermission('rule.update'),
+  checkResourceOwnership(getRuleChainForOwnershipCheck),
+  ruleChainController.manualTriggerScheduled
+);
+
+// ========== DEBUG ENDPOINTS (for development/troubleshooting) ==========
+
+// Get ScheduleManager stats and status
+router.get(
+  '/debug/schedule-stats',
+  authenticate,
+  checkPermission('rule.view'),
+  async (req, res) => {
+    try {
+      // Import rule engine
+      const ruleEngineModule = require('../ruleEngine');
+      const ruleEngine = ruleEngineModule.ruleEngine;
+      
+      if (!ruleEngine.isInitialized) {
+        return res.status(503).json({
+          status: 'error',
+          message: 'Rule engine not initialized'
+        });
+      }
+
+      const stats = ruleEngine.getScheduleStats();
+      
+      res.json({
+        status: 'success',
+        data: stats,
+        timestamp: new Date()
+      });
+    } catch (error) {
+      res.status(500).json({
+        status: 'error',
+        message: error.message
+      });
+    }
+  }
+);
+
+// Manually sync a specific rule chain schedule
+router.post(
+  '/:id/debug/sync-schedule',
+  authenticate,
+  checkPermission('rule.update'),
+  checkResourceOwnership(getRuleChainForOwnershipCheck),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      // Import rule engine
+      const ruleEngineModule = require('../ruleEngine');
+      const ruleEngine = ruleEngineModule.ruleEngine;
+      
+      if (!ruleEngine.isInitialized) {
+        return res.status(503).json({
+          status: 'error',
+          message: 'Rule engine not initialized'
+        });
+      }
+
+      await ruleEngine.syncScheduleFromDatabase(parseInt(id));
+      
+      res.json({
+        status: 'success',
+        message: `Schedule synced for rule chain ${id}`,
+        timestamp: new Date()
+      });
+    } catch (error) {
+      res.status(500).json({
+        status: 'error',
+        message: error.message
+      });
+    }
+  }
+);
+
+// Refresh all schedules from database
+router.post(
+  '/debug/refresh-all-schedules',
+  authenticate,
+  checkPermission('rule.update'),
+  async (req, res) => {
+    try {
+      // Import rule engine
+      const ruleEngineModule = require('../ruleEngine');
+      const ruleEngine = ruleEngineModule.ruleEngine;
+      
+      if (!ruleEngine.isInitialized) {
+        return res.status(503).json({
+          status: 'error',
+          message: 'Rule engine not initialized'
+        });
+      }
+
+      await ruleEngine.scheduleManager.refreshDatabaseSchedules();
+      
+      const stats = ruleEngine.getScheduleStats();
+      
+      res.json({
+        status: 'success',
+        message: 'All schedules refreshed from database',
+        data: stats,
+        timestamp: new Date()
+      });
+    } catch (error) {
+      res.status(500).json({
+        status: 'error',
+        message: error.message
+      });
+    }
+  }
+);
+
+// ========== PARAMETERIZED ROUTES (must come after specific routes) ==========
 
 router
   .route('/:id')
@@ -227,19 +195,19 @@ router
     authenticate,
     checkPermission('rule.view'),
     checkResourceOwnership(getRuleChainForOwnershipCheck),
-    getChainById
+    ruleChainController.getChainById
   )
   .patch(
     authenticate,
     checkPermission('rule.update'),
     checkResourceOwnership(getRuleChainForOwnershipCheck),
-    updateChain
+    ruleChainController.updateChain
   )
   .delete(
     authenticate,
     checkPermission('rule.delete'),
     checkResourceOwnership(getRuleChainForOwnershipCheck),
-    deleteChain
+    ruleChainController.deleteChain
   );
 
 // RuleChainNode routes
@@ -248,7 +216,7 @@ router.get(
   authenticate,
   checkPermission('rule.view'),
   checkResourceOwnership(getRuleChainForOwnershipCheck, 'ruleChainId'),
-  getAllNodes
+  ruleChainController.getAllNodes
 );
 
 router.post(
@@ -256,12 +224,11 @@ router.post(
   authenticate,
   checkPermission('rule.update'),
   (req, res, next) => {
-    // Set the id param from the body's ruleChainId for ownership check
     req.params.id = req.body.ruleChainId;
     next();
   },
   checkResourceOwnership(getRuleChainForOwnershipCheck),
-  createNode
+  ruleChainController.createNode
 );
 
 router
@@ -270,19 +237,19 @@ router
     authenticate,
     checkPermission('rule.view'),
     checkResourceOwnership(getRuleChainNodeForOwnershipCheck),
-    getNodeById
+    ruleChainController.getNodeById
   )
   .patch(
     authenticate,
     checkPermission('rule.update'),
     checkResourceOwnership(getRuleChainNodeForOwnershipCheck),
-    updateNode
+    ruleChainController.updateNode
   )
   .delete(
     authenticate,
     checkPermission('rule.delete'),
     checkResourceOwnership(getRuleChainNodeForOwnershipCheck),
-    deleteNode
+    ruleChainController.deleteNode
   );
 
 // Execute route
@@ -291,7 +258,7 @@ router.post(
   authenticate,
   checkPermission('rule.update'),
   checkResourceOwnership(getRuleChainForOwnershipCheck),
-  executeChain
+  ruleChainController.executeChain
 );
 
 // Trigger route
@@ -300,7 +267,7 @@ router.post(
   authenticate,
   checkPermission('rule.update'),
   checkResourceOwnership(getRuleChainForOwnershipCheck),
-  triggerChain
+  ruleChainController.triggerChain
 );
 
 module.exports = router;

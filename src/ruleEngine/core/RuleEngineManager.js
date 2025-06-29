@@ -304,25 +304,86 @@ class RuleEngineManager {
   async processScheduledEvent(eventData) {
     const startTime = Date.now();
     
+    logger.info('📅 DEBUG: processScheduledEvent() - Received scheduled event', {
+      eventData: {
+        cronExpression: eventData.cronExpression,
+        ruleChainId: eventData.ruleChainId,
+        organizationId: eventData.organizationId,
+        scheduleName: eventData.scheduleName,
+        ruleChainIds: eventData.ruleChainIds,
+        timestamp: eventData.timestamp
+      },
+      hasRuleChainIndex: !!this.ruleChainIndex
+    });
+    
     try {
-      const { cronExpression, organizationId } = eventData;
+      const { cronExpression, organizationId, ruleChainId } = eventData;
       
-      logger.debug('Processing scheduled event', {
+      // Validate required fields
+      if (!cronExpression) {
+        logger.error('❌ DEBUG: processScheduledEvent() - Missing cronExpression', {
+          eventData
+        });
+        return { status: 'error', error: 'Missing cronExpression' };
+      }
+
+      if (!organizationId) {
+        logger.error('❌ DEBUG: processScheduledEvent() - Missing organizationId', {
+          eventData
+        });
+        return { status: 'error', error: 'Missing organizationId' };
+      }
+      
+      logger.info('🔍 DEBUG: processScheduledEvent() - Processing scheduled event', {
         cronExpression,
-        organizationId
+        organizationId,
+        ruleChainId: ruleChainId || 'not specified'
       });
       
       // Find rule chains with this schedule
-      const relevantRuleChainIds = await this.ruleChainIndex.findBySchedule(cronExpression, organizationId);
+      let relevantRuleChainIds = [];
+      
+      if (ruleChainId) {
+        // Specific rule chain requested
+        relevantRuleChainIds = [ruleChainId];
+        logger.info('🔍 DEBUG: processScheduledEvent() - Using specific rule chain ID', {
+          ruleChainId,
+          relevantRuleChainIds
+        });
+      } else {
+        // Find by schedule
+        relevantRuleChainIds = await this.ruleChainIndex.findBySchedule(cronExpression, organizationId);
+        logger.info('🔍 DEBUG: processScheduledEvent() - Found rule chains by schedule', {
+          cronExpression,
+          organizationId,
+          relevantRuleChainIds
+        });
+      }
       
       if (relevantRuleChainIds.length === 0) {
+        logger.warn('⚠️ DEBUG: processScheduledEvent() - No relevant rule chains found', {
+          cronExpression,
+          organizationId,
+          ruleChainId
+        });
         return { status: 'no_rules', processed: 0 };
       }
       
       // For scheduled events, filter to only include schedule-eligible rule chains
       const scheduleEligibleRuleChains = await this._filterScheduleEligibleRuleChains(relevantRuleChainIds);
       
+      logger.info('🔍 DEBUG: processScheduledEvent() - Filtered rule chains by execution type', {
+        originalCount: relevantRuleChainIds.length,
+        scheduleEligibleCount: scheduleEligibleRuleChains.length,
+        originalRuleChains: relevantRuleChainIds,
+        scheduleEligibleRuleChains
+      });
+      
       if (scheduleEligibleRuleChains.length === 0) {
+        logger.warn('⚠️ DEBUG: processScheduledEvent() - No schedule-eligible rule chains found', {
+          originalRuleChains: relevantRuleChainIds,
+          reason: 'All rule chains are event-triggered type'
+        });
         return { 
           status: 'no_schedule_rules', 
           processed: 0, 
@@ -331,10 +392,40 @@ class RuleEngineManager {
       }
       
       // For scheduled events, collect all required data
+      logger.info('🔍 DEBUG: processScheduledEvent() - Collecting required data for rule chains', {
+        scheduleEligibleRuleChains,
+        organizationId
+      });
+      
       const rawData = await this._collectAllRequiredData(scheduleEligibleRuleChains, organizationId);
       
+      logger.info('🔍 DEBUG: processScheduledEvent() - Collected data for execution', {
+        rawData: {
+          sensorDataCount: rawData.sensorData?.length || 0,
+          deviceDataCount: rawData.deviceData?.length || 0,
+          sensorData: rawData.sensorData,
+          deviceData: rawData.deviceData
+        }
+      });
+      
       // Execute schedule-eligible rule chains
+      logger.info('🚀 DEBUG: processScheduledEvent() - About to execute rule chains', {
+        scheduleEligibleRuleChains,
+        organizationId,
+        rawData
+      });
+      
       const results = await this._executeRuleChains(scheduleEligibleRuleChains, rawData, organizationId);
+      
+      logger.info('✅ DEBUG: processScheduledEvent() - Rule chains execution completed', {
+        scheduleEligibleRuleChains,
+        resultsCount: results.length,
+        results: results.map(r => ({
+          ruleChainId: r.ruleChainId,
+          status: r.status,
+          hasResult: !!r.result
+        }))
+      });
       
       this._updateMetrics(startTime, relevantRuleChainIds.length, results.length, relevantRuleChainIds.length - scheduleEligibleRuleChains.length);
       
@@ -348,7 +439,11 @@ class RuleEngineManager {
       };
       
     } catch (error) {
-      logger.error('Error processing scheduled event:', error);
+      logger.error('❌ DEBUG: processScheduledEvent() - Scheduled event processing failed', {
+        eventData,
+        error: error.message,
+        stack: error.stack
+      });
       throw error;
     }
   }
@@ -536,12 +631,35 @@ class RuleEngineManager {
   async _executeRuleChains(ruleChainIds, rawData, organizationId) {
     const results = [];
     
+    logger.info('🚀 DEBUG: _executeRuleChains() - Starting rule chains execution', {
+      ruleChainIds,
+      organizationId,
+      rawDataSummary: {
+        sensorDataCount: rawData.sensorData?.length || 0,
+        deviceDataCount: rawData.deviceData?.length || 0,
+        sensorData: rawData.sensorData,
+        deviceData: rawData.deviceData
+      }
+    });
+    
+    if (!ruleChainIds || ruleChainIds.length === 0) {
+      logger.warn('⚠️ DEBUG: _executeRuleChains() - No rule chain IDs provided', {
+        ruleChainIds
+      });
+      return results;
+    }
+    
     // Execute rule chains in parallel for better performance
     const promises = ruleChainIds.map(async (ruleChainId) => {
+      logger.info('🔍 DEBUG: _executeRuleChains() - Processing rule chain', {
+        ruleChainId,
+        organizationId
+      });
+
       try {
         // Check circuit breaker
         if (this._isCircuitBreakerOpen(ruleChainId)) {
-          logger.warn(`Skipping rule chain ${ruleChainId} - circuit breaker open`);
+          logger.warn(`⚠️ DEBUG: _executeRuleChains() - Skipping rule chain ${ruleChainId} - circuit breaker open`);
           return {
             ruleChainId,
             status: 'skipped',
@@ -549,8 +667,29 @@ class RuleEngineManager {
           };
         }
         
-        // Execute the rule chain
+        // Execute the rule chain using the imported service
+        logger.info('🔍 DEBUG: _executeRuleChains() - Calling ruleChainService.execute()', {
+          ruleChainId,
+          hasRuleChainService: !!ruleChainService,
+          rawDataSummary: {
+            sensorDataCount: rawData.sensorData?.length || 0,
+            deviceDataCount: rawData.deviceData?.length || 0
+          }
+        });
+
         const result = await ruleChainService.execute(ruleChainId, rawData);
+        
+        logger.info('✅ DEBUG: _executeRuleChains() - Rule chain execution completed', {
+          ruleChainId,
+          executionResult: {
+            status: result.status,
+            ruleChainId: result.ruleChainId,
+            name: result.name,
+            summary: result.summary,
+            nodeResultsCount: result.nodeResults ? Object.keys(result.nodeResults).length : 0,
+            hasExecutionDetails: !!result.executionDetails
+          }
+        });
         
         // Update circuit breaker on success
         this._recordSuccess(ruleChainId);
@@ -565,7 +704,12 @@ class RuleEngineManager {
         };
         
       } catch (error) {
-        logger.error(`Error executing rule chain ${ruleChainId}:`, error);
+        logger.error('❌ DEBUG: _executeRuleChains() - Rule chain execution failed', {
+          ruleChainId,
+          organizationId,
+          error: error.message,
+          stack: error.stack
+        });
         
         // Update circuit breaker on failure
         this._recordFailure(ruleChainId);
@@ -592,6 +736,21 @@ class RuleEngineManager {
       }
     });
     
+    logger.info('🏁 DEBUG: _executeRuleChains() - All rule chains processed', {
+      totalRuleChains: ruleChainIds.length,
+      resultsCount: results.length,
+      successfulExecutions: results.filter(r => r.status === 'success').length,
+      failedExecutions: results.filter(r => r.status === 'error').length,
+      skippedExecutions: results.filter(r => r.status === 'skipped').length,
+      results: results.map(r => ({
+        ruleChainId: r.ruleChainId,
+        status: r.status,
+        hasResult: !!r.result,
+        error: r.error,
+        reason: r.reason
+      }))
+    });
+    
     return results;
   }
 
@@ -602,14 +761,251 @@ class RuleEngineManager {
    * @param {Array} entityUuids - Optional filter
    */
   async _collectAllRequiredData(ruleChainIds, organizationId, entityUuids = null) {
-    // This would use the same data collection logic from the original ruleChainService
-    // but optimized to only collect data needed by the specific rule chains
-    
-    // For now, return empty data - this will be enhanced in next iterations
-    return {
-      sensorData: [],
-      deviceData: []
-    };
+    logger.info('🔍 DEBUG: _collectAllRequiredData() - Starting data collection', {
+      ruleChainIds,
+      organizationId,
+      entityUuids
+    });
+
+    try {
+      // Get rule chains with their nodes to understand data requirements
+      const { RuleChain, RuleChainNode } = require('../../models/initModels');
+      
+      const ruleChains = await RuleChain.findAll({
+        where: {
+          id: ruleChainIds,
+          organizationId
+        },
+        include: [
+          {
+            model: RuleChainNode,
+            as: 'nodes'
+          }
+        ]
+      });
+
+      logger.info('🔍 DEBUG: _collectAllRequiredData() - Found rule chains', {
+        foundCount: ruleChains.length,
+        ruleChains: ruleChains.map(rc => ({
+          id: rc.id,
+          name: rc.name,
+          nodeCount: rc.nodes?.length || 0
+        }))
+      });
+
+      // Extract data requirements from node configs
+      const sensorReqs = new Map();
+      const deviceReqs = new Map();
+
+      for (const ruleChain of ruleChains) {
+        if (!ruleChain.nodes || ruleChain.nodes.length === 0) {
+          logger.warn('⚠️ DEBUG: _collectAllRequiredData() - Rule chain has no nodes', {
+            ruleChainId: ruleChain.id,
+            name: ruleChain.name
+          });
+          continue;
+        }
+
+        for (const node of ruleChain.nodes) {
+          try {
+            const config = JSON.parse(node.config || '{}');
+            logger.debug('🔍 DEBUG: _collectAllRequiredData() - Processing node config', {
+              ruleChainId: ruleChain.id,
+              nodeId: node.id,
+              nodeType: node.type,
+              config
+            });
+            
+            this._extractRequirements(config, sensorReqs, deviceReqs);
+          } catch (error) {
+            logger.error(`❌ DEBUG: _collectAllRequiredData() - Error parsing config for node ${node.id}:`, error);
+          }
+        }
+      }
+
+      logger.info('🔍 DEBUG: _collectAllRequiredData() - Extracted requirements', {
+        sensorRequirements: Array.from(sensorReqs.entries()).map(([uuid, params]) => ({
+          uuid,
+          parameters: Array.from(params)
+        })),
+        deviceRequirements: Array.from(deviceReqs.entries()).map(([uuid, params]) => ({
+          uuid,
+          parameters: Array.from(params)
+        }))
+      });
+
+      // Collect required data in parallel
+      const [sensorData, deviceData] = await Promise.all([
+        this._collectSensorData(sensorReqs),
+        this._collectDeviceData(deviceReqs)
+      ]);
+
+      logger.info('✅ DEBUG: _collectAllRequiredData() - Data collection completed', {
+        sensorDataCount: sensorData.length,
+        deviceDataCount: deviceData.length,
+        collectedSensorData: sensorData,
+        collectedDeviceData: deviceData
+      });
+
+      return {
+        sensorData,
+        deviceData
+      };
+    } catch (error) {
+      logger.error('❌ DEBUG: _collectAllRequiredData() - Data collection failed:', error);
+      // Return empty data as fallback
+      return {
+        sensorData: [],
+        deviceData: []
+      };
+    }
+  }
+
+  /**
+   * Recursively extracts data requirements from rule expressions
+   * @param {Object} expression - Rule expression object
+   * @param {Map} sensorReqs - Map to collect sensor requirements
+   * @param {Map} deviceReqs - Map to collect device requirements
+   */
+  _extractRequirements(expression, sensorReqs, deviceReqs) {
+    if (expression.type && expression.expressions) {
+      // Handle nested AND/OR expressions
+      expression.expressions.forEach((expr) =>
+        this._extractRequirements(expr, sensorReqs, deviceReqs)
+      );
+    } else {
+      // Handle leaf node (actual condition)
+      const { sourceType, UUID, key } = expression;
+      if (!UUID || !key) return;
+
+      if (sourceType === 'sensor') {
+        if (!sensorReqs.has(UUID)) {
+          sensorReqs.set(UUID, new Set());
+        }
+        sensorReqs.get(UUID).add(key);
+      } else if (sourceType === 'device') {
+        if (!deviceReqs.has(UUID)) {
+          deviceReqs.set(UUID, new Set());
+        }
+        deviceReqs.get(UUID).add(key);
+      }
+    }
+  }
+
+  /**
+   * Collects latest sensor values based on requirements
+   * @param {Map} sensorReqs - Map of sensor UUIDs to required parameters
+   * @returns {Array} Array of sensor data objects
+   */
+  async _collectSensorData(sensorReqs) {
+    const { Sensor, TelemetryData, DataStream } = require('../../models/initModels');
+    const sensorData = [];
+
+    for (const [UUID, parameters] of sensorReqs) {
+      try {
+        const sensor = await Sensor.findOne({ where: { uuid: UUID } });
+        if (!sensor) {
+          logger.warn(`⚠️ DEBUG: _collectSensorData() - Sensor not found: ${UUID}`);
+          continue;
+        }
+
+        const sensorDataObject = { UUID };
+
+        for (const param of parameters) {
+          const telemetry = await TelemetryData.findOne({
+            where: {
+              sensorId: sensor.id,
+              variableName: param,
+            },
+          });
+
+          if (telemetry) {
+            const latestStream = await DataStream.findOne({
+              where: { telemetryDataId: telemetry.id },
+              order: [['recievedAt', 'DESC']],
+              limit: 1,
+            });
+
+            if (latestStream) {
+              // Convert value based on telemetry datatype
+              let value = latestStream.value;
+              let receivedAt = latestStream.recievedAt;
+              switch (telemetry.datatype) {
+                case 'number':
+                  value = Number(value);
+                  break;
+                case 'boolean':
+                  value = value.toLowerCase() === 'true';
+                  break;
+                // String and other types remain as is
+              }
+              sensorDataObject[param] = value;
+              sensorDataObject['timestamp'] = receivedAt;
+            }
+          }
+        }
+
+        if (Object.keys(sensorDataObject).length > 1) {
+          sensorData.push(sensorDataObject);
+        }
+      } catch (error) {
+        logger.error(`❌ DEBUG: _collectSensorData() - Error collecting sensor data for UUID ${UUID}:`, error);
+      }
+    }
+
+    return sensorData;
+  }
+
+  /**
+   * Collects latest device state values based on requirements
+   * @param {Map} deviceReqs - Map of device UUIDs to required parameters
+   * @returns {Array} Array of device data objects
+   */
+  async _collectDeviceData(deviceReqs) {
+    const { Device, DeviceState, DeviceStateInstance } = require('../../models/initModels');
+    const deviceData = [];
+
+    for (const [UUID, parameters] of deviceReqs) {
+      try {
+        const device = await Device.findOne({ where: { uuid: UUID } });
+        if (!device) {
+          logger.warn(`⚠️ DEBUG: _collectDeviceData() - Device not found: ${UUID}`);
+          continue;
+        }
+
+        const deviceDataObject = { UUID };
+
+        for (const param of parameters) {
+          const state = await DeviceState.findOne({
+            where: {
+              deviceId: device.id,
+              stateName: param,
+            },
+          });
+
+          if (state) {
+            const latestInstance = await DeviceStateInstance.findOne({
+              where: { deviceStateId: state.id },
+              order: [['fromTimestamp', 'DESC']],
+              limit: 1,
+            });
+
+            if (latestInstance) {
+              deviceDataObject[param] = latestInstance.value;
+              deviceDataObject['timestamp'] = latestInstance.fromTimestamp;
+            }
+          }
+        }
+
+        if (Object.keys(deviceDataObject).length > 1) {
+          deviceData.push(deviceDataObject);
+        }
+      } catch (error) {
+        logger.error(`❌ DEBUG: _collectDeviceData() - Error collecting device data for UUID ${UUID}:`, error);
+      }
+    }
+
+    return deviceData;
   }
 
   /**
@@ -748,6 +1144,10 @@ class RuleEngineManager {
    */
   async _processActionResults(executionResult, ruleChainId) {
     try {
+      logger.info('🎬 DEBUG: Processing action results', {
+        ruleChainId,
+        executionResult
+      });
       // Extract action results from execution
       const deviceStateActions = executionResult.nodeResults?.actions;
       

@@ -693,6 +693,12 @@ class RuleChainService {
         return compareTime <= parseDuration(value);
       }
       case 'valueOlderThan': {
+        console.log('🎬 DEBUG: valueOlderThan', {
+          sourceTimestamp,
+          duration,
+          sourceValue,
+          value
+        });
         const sourceTime = new Date(sourceTimestamp).getTime();
         const compareTime = Date.now() - sourceTime; // elapsed time in ms
 

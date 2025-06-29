@@ -68,9 +68,31 @@ class ScheduleManager {
    */
   async _loadSchedulesFromDatabase() {
     try {
+      logger.info('🔍 DEBUG: _loadSchedulesFromDatabase() - Starting to load schedules from database');
+      
       const scheduledRuleChains = await this.ruleChainService.getScheduledRuleChains();
       
+      logger.info('🔍 DEBUG: _loadSchedulesFromDatabase() - Retrieved rule chains from database', {
+        count: scheduledRuleChains.length,
+        ruleChains: scheduledRuleChains.map(rc => ({
+          id: rc.id,
+          name: rc.name,
+          scheduleEnabled: rc.scheduleEnabled,
+          cronExpression: rc.cronExpression,
+          timezone: rc.timezone,
+          executionType: rc.executionType
+        }))
+      });
+      
       for (const ruleChain of scheduledRuleChains) {
+        logger.info('🔍 DEBUG: _loadSchedulesFromDatabase() - Processing rule chain', {
+          id: ruleChain.id,
+          name: ruleChain.name,
+          scheduleEnabled: ruleChain.scheduleEnabled,
+          cronExpression: ruleChain.cronExpression,
+          timezone: ruleChain.timezone
+        });
+
         const scheduleInfo = {
           id: ruleChain.id,
           ruleChainId: ruleChain.id,
@@ -92,9 +114,29 @@ class ScheduleManager {
         this.schedules.set(ruleChain.id, scheduleInfo);
         this.scheduleStats.totalSchedules++;
 
+        logger.info('🔍 DEBUG: _loadSchedulesFromDatabase() - Added schedule to local cache', {
+          ruleChainId: ruleChain.id,
+          scheduleInfo: {
+            enabled: scheduleInfo.enabled,
+            cronExpression: scheduleInfo.cronExpression,
+            timezone: scheduleInfo.timezone
+          }
+        });
+
         // Create cron job if enabled
         if (scheduleInfo.enabled) {
+          logger.info('🔍 DEBUG: _loadSchedulesFromDatabase() - Creating cron job for enabled schedule', {
+            ruleChainId: ruleChain.id,
+            name: ruleChain.name,
+            cronExpression: ruleChain.cronExpression
+          });
           this._createCronJob(scheduleInfo);
+        } else {
+          logger.warn('🔍 DEBUG: _loadSchedulesFromDatabase() - Skipping cron job creation (schedule disabled)', {
+            ruleChainId: ruleChain.id,
+            name: ruleChain.name,
+            enabled: scheduleInfo.enabled
+          });
         }
       }
 
@@ -102,9 +144,13 @@ class ScheduleManager {
       this.autoSyncConfig.lastKnownScheduleCount = scheduledRuleChains.length;
       this.scheduleStats.lastDatabaseSyncAt = new Date();
 
-      logger.info(`Loaded ${scheduledRuleChains.length} schedules from database`);
+      logger.info(`🔍 DEBUG: _loadSchedulesFromDatabase() - Completed loading ${scheduledRuleChains.length} schedules from database`, {
+        totalSchedules: this.scheduleStats.totalSchedules,
+        activeSchedules: this.scheduleStats.activeSchedules,
+        loadedScheduleIds: Array.from(this.schedules.keys())
+      });
     } catch (error) {
-      logger.error('Failed to load schedules from database:', error);
+      logger.error('❌ DEBUG: _loadSchedulesFromDatabase() - Failed to load schedules from database:', error);
       throw error;
     }
   }
@@ -851,18 +897,58 @@ class ScheduleManager {
    * @param {Object} schedule 
    */
   _createCronJob(schedule) {
-    const cronJob = cron.schedule(schedule.cronExpression, () => {
-      this._executeSchedule(schedule);
-    }, {
-      scheduled: false,
-      timezone: schedule.timezone || 'UTC'
+    logger.info('🔍 DEBUG: _createCronJob() - Starting to create cron job', {
+      ruleChainId: schedule.id,
+      name: schedule.name,
+      cronExpression: schedule.cronExpression,
+      timezone: schedule.timezone,
+      enabled: schedule.enabled
     });
 
-    cronJob.start();
-    this.cronJobs.set(schedule.id, cronJob);
-    this.scheduleStats.activeSchedules++;
+    try {
+      // Validate cron expression before creating job
+      if (!cron.validate(schedule.cronExpression)) {
+        logger.error('❌ DEBUG: _createCronJob() - Invalid cron expression', {
+          ruleChainId: schedule.id,
+          cronExpression: schedule.cronExpression
+        });
+        return;
+      }
 
-    logger.debug(`Cron job created for schedule: ${schedule.name} (timezone: ${schedule.timezone || 'UTC'})`);
+      const cronJob = cron.schedule(schedule.cronExpression, () => {
+        logger.info('🔥 DEBUG: CRON JOB TRIGGERED!', {
+          ruleChainId: schedule.id,
+          name: schedule.name,
+          cronExpression: schedule.cronExpression,
+          triggeredAt: new Date()
+        });
+        this._executeSchedule(schedule);
+      }, {
+        scheduled: false,
+        timezone: schedule.timezone || 'UTC'
+      });
+
+      cronJob.start();
+      this.cronJobs.set(schedule.id, cronJob);
+      this.scheduleStats.activeSchedules++;
+
+      logger.info('✅ DEBUG: _createCronJob() - Cron job created and started successfully', {
+        ruleChainId: schedule.id,
+        name: schedule.name,
+        cronExpression: schedule.cronExpression,
+        timezone: schedule.timezone || 'UTC',
+        activeSchedulesCount: this.scheduleStats.activeSchedules,
+        cronJobsCount: this.cronJobs.size
+      });
+    } catch (error) {
+      logger.error('❌ DEBUG: _createCronJob() - Failed to create cron job', {
+        ruleChainId: schedule.id,
+        name: schedule.name,
+        cronExpression: schedule.cronExpression,
+        error: error.message,
+        stack: error.stack
+      });
+    }
   }
 
   /**
@@ -870,22 +956,37 @@ class ScheduleManager {
    * @param {Object} schedule 
    */
   async _executeSchedule(schedule) {
-    try {
-      logger.debug(`Executing schedule: ${schedule.name} (${schedule.cronExpression})`);
+    logger.info('🚀 DEBUG: _executeSchedule() - Starting schedule execution', {
+      ruleChainId: schedule.ruleChainId,
+      name: schedule.name,
+      cronExpression: schedule.cronExpression,
+      executionCount: schedule.executionCount,
+      executedAt: new Date()
+    });
 
+    try {
       // Update local stats
       schedule.lastExecutedAt = new Date();
       schedule.executionCount++;
       this.scheduleStats.executedSchedules++;
       this.scheduleStats.lastExecutedAt = new Date();
 
+      logger.info('🔍 DEBUG: _executeSchedule() - Updated local stats', {
+        ruleChainId: schedule.ruleChainId,
+        newExecutionCount: schedule.executionCount,
+        lastExecutedAt: schedule.lastExecutedAt
+      });
+
       // Update database stats if it's a database schedule
       if (schedule.ruleChainId && !schedule.isLegacy && this.ruleChainService) {
+        logger.info('🔍 DEBUG: _executeSchedule() - Updating database execution stats', {
+          ruleChainId: schedule.ruleChainId
+        });
         await this.ruleChainService.updateExecutionStats(schedule.ruleChainId, true);
       }
 
-      // Emit scheduled event
-      this.eventBus.emitEvent(EventTypes.SCHEDULE_TRIGGERED, {
+      // Prepare event data
+      const eventData = {
         cronExpression: schedule.cronExpression,
         scheduleName: schedule.name,
         scheduleId: schedule.id,
@@ -901,11 +1002,47 @@ class ScheduleManager {
           isDatabaseBacked: !schedule.isLegacy,
           ...schedule.metadata
         }
+      };
+
+      logger.info('🔍 DEBUG: _executeSchedule() - Prepared event data', {
+        eventData: {
+          ruleChainId: eventData.ruleChainId,
+          organizationId: eventData.organizationId,
+          ruleChainIds: eventData.ruleChainIds,
+          cronExpression: eventData.cronExpression,
+          scheduleName: eventData.scheduleName
+        }
       });
 
-      logger.debug(`Schedule executed successfully: ${schedule.name}`);
+      // Emit scheduled event
+      logger.info('📡 DEBUG: _executeSchedule() - Emitting SCHEDULE_TRIGGERED event', {
+        ruleChainId: schedule.ruleChainId,
+        eventType: 'SCHEDULE_TRIGGERED',
+        hasEventBus: !!this.eventBus
+      });
+
+      if (!this.eventBus) {
+        logger.error('❌ DEBUG: _executeSchedule() - EventBus is not available!', {
+          ruleChainId: schedule.ruleChainId
+        });
+        return;
+      }
+
+      this.eventBus.emitEvent(EventTypes.SCHEDULE_TRIGGERED, eventData);
+
+      logger.info('✅ DEBUG: _executeSchedule() - Successfully emitted SCHEDULE_TRIGGERED event', {
+        ruleChainId: schedule.ruleChainId,
+        name: schedule.name,
+        eventData
+      });
+
     } catch (error) {
-      logger.error(`Failed to execute schedule ${schedule.name}:`, error);
+      logger.error('❌ DEBUG: _executeSchedule() - Schedule execution failed', {
+        ruleChainId: schedule.ruleChainId,
+        name: schedule.name,
+        error: error.message,
+        stack: error.stack
+      });
       
       // Update failure stats
       schedule.failureCount++;
@@ -916,7 +1053,7 @@ class ScheduleManager {
         try {
           await this.ruleChainService.updateExecutionStats(schedule.ruleChainId, false, error);
         } catch (dbError) {
-          logger.error(`Failed to update database failure stats:`, dbError);
+          logger.error('❌ DEBUG: _executeSchedule() - Failed to update database failure stats:', dbError);
         }
       }
     }

@@ -691,6 +691,223 @@ class RuleChainController {
   async findNodeById(req, res) {
     return this.getNodeById(req, res);
   }
+
+  // Debug endpoints for schedule troubleshooting
+  async debugScheduleInfo(req, res, next) {
+    try {
+      const { id } = req.params;
+      
+      // Get schedule information from rule chain service
+      const scheduleInfo = await ruleChainService.getScheduleInfo(id);
+      
+      // Get rule engine manager instance
+      const { ruleEngine } = require('../ruleEngine');
+      const ruleEngineManager = ruleEngine;
+      
+      // Get schedule manager stats
+      const scheduleManager = ruleEngineManager.scheduleManager;
+      const scheduleStats = scheduleManager ? scheduleManager.getStats() : null;
+      
+      // Find this specific schedule in the manager
+      const localSchedule = scheduleManager ? scheduleManager.getSchedule(id) : null;
+      
+      res.status(200).json({
+        status: 'success',
+        data: {
+          databaseSchedule: scheduleInfo,
+          localSchedule,
+          scheduleManagerStats: scheduleStats,
+          ruleEngineInfo: {
+            hasRuleEngine: !!ruleEngineManager,
+            hasScheduleManager: !!scheduleManager,
+            hasRuleChainIndex: !!ruleEngineManager.ruleChainIndex,
+            hasRuleChainService: !!ruleEngineManager.ruleChainService
+          },
+          troubleshooting: {
+            isScheduleInDatabase: !!scheduleInfo,
+            isScheduleInLocalCache: !!localSchedule,
+            isScheduleEnabled: scheduleInfo ? scheduleInfo.scheduleEnabled : false,
+            cronExpression: scheduleInfo ? scheduleInfo.cronExpression : null,
+            lastExecutedAt: scheduleInfo ? scheduleInfo.lastExecutedAt : null,
+            executionCount: scheduleInfo ? scheduleInfo.executionCount : 0,
+            failureCount: scheduleInfo ? scheduleInfo.failureCount : 0
+          }
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async debugManualTriggerSchedule(req, res, next) {
+    try {
+      const { id } = req.params;
+      
+      // Get rule engine manager instance
+      const { ruleEngine } = require('../ruleEngine');
+      const ruleEngineManager = ruleEngine;
+      const scheduleManager = ruleEngineManager.scheduleManager;
+      
+      if (!scheduleManager) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'Schedule manager not available'
+        });
+      }
+      
+      // Get schedule info first
+      const schedule = scheduleManager.getSchedule(id);
+      if (!schedule) {
+        return res.status(404).json({
+          status: 'error',
+          message: `Schedule for rule chain ${id} not found in local cache`
+        });
+      }
+      
+      // Manually trigger the schedule
+      const result = await scheduleManager.manuallyTriggerSchedule(id);
+      
+      res.status(200).json({
+        status: 'success',
+        message: 'Schedule triggered manually',
+        data: {
+          triggeredSchedule: result,
+          timestamp: new Date()
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async debugScheduleManagerStats(req, res, next) {
+    try {
+      // Get rule engine manager instance
+      const { ruleEngine } = require('../ruleEngine');
+      const ruleEngineManager = ruleEngine;
+      const scheduleManager = ruleEngineManager.scheduleManager;
+      
+      if (!scheduleManager) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'Schedule manager not available'
+        });
+      }
+      
+      const stats = scheduleManager.getStats();
+      
+      res.status(200).json({
+        status: 'success',
+        data: {
+          stats,
+          timestamp: new Date()
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async debugSyncScheduleFromDB(req, res, next) {
+    try {
+      const { id } = req.params;
+      
+      // Get rule engine manager instance
+      const { ruleEngine } = require('../ruleEngine');
+      const ruleEngineManager = ruleEngine;
+      const scheduleManager = ruleEngineManager.scheduleManager;
+      
+      if (!scheduleManager) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'Schedule manager not available'
+        });
+      }
+      
+      // Sync specific schedule from database
+      await scheduleManager.syncScheduleFromDatabase(parseInt(id));
+      
+      // Get updated schedule info
+      const updatedSchedule = scheduleManager.getSchedule(parseInt(id));
+      
+      res.status(200).json({
+        status: 'success',
+        message: 'Schedule synced from database',
+        data: {
+          syncedSchedule: updatedSchedule,
+          timestamp: new Date()
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async debugRefreshAllSchedules(req, res, next) {
+    try {
+      // Get rule engine manager instance
+      const { ruleEngine } = require('../ruleEngine');
+      const ruleEngineManager = ruleEngine;
+      const scheduleManager = ruleEngineManager.scheduleManager;
+      
+      if (!scheduleManager) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'Schedule manager not available'
+        });
+      }
+      
+      // Refresh all database schedules
+      await scheduleManager.refreshDatabaseSchedules();
+      
+      // Get updated stats
+      const stats = scheduleManager.getStats();
+      
+      res.status(200).json({
+        status: 'success',
+        message: 'All schedules refreshed from database',
+        data: {
+          stats,
+          timestamp: new Date()
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async debugTriggerAutoSync(req, res, next) {
+    try {
+      // Get rule engine manager instance
+      const { ruleEngine } = require('../ruleEngine');
+      const ruleEngineManager = ruleEngine;
+      const scheduleManager = ruleEngineManager.scheduleManager;
+      
+      if (!scheduleManager) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'Schedule manager not available'
+        });
+      }
+      
+      // Trigger auto-sync manually
+      await scheduleManager.triggerAutoSync();
+      
+      // Get updated stats
+      const stats = scheduleManager.getStats();
+      
+      res.status(200).json({
+        status: 'success',
+        message: 'Auto-sync triggered manually',
+        data: {
+          stats,
+          timestamp: new Date()
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 module.exports = new RuleChainController(); 

@@ -270,4 +270,12 @@ router.post(
   ruleChainController.triggerChain
 );
 
+// Debug endpoints for schedule troubleshooting
+router.get('/debug/:id/schedule-info', ruleChainController.debugScheduleInfo);
+router.post('/debug/:id/trigger-schedule', ruleChainController.debugManualTriggerSchedule);
+router.get('/debug/schedule-manager/stats', ruleChainController.debugScheduleManagerStats);
+router.post('/debug/:id/sync-from-db', ruleChainController.debugSyncScheduleFromDB);
+router.post('/debug/refresh-all-schedules', ruleChainController.debugRefreshAllSchedules);
+router.post('/debug/trigger-auto-sync', ruleChainController.debugTriggerAutoSync);
+
 module.exports = router;

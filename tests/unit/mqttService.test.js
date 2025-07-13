@@ -1,52 +1,6 @@
 /**
  * Unit tests for MQTT Service
  */
-const mqttService = require('../../src/services/mqttService');
-
-// Mock dependencies
-jest.mock('mqtt', () => ({
-  createServer: jest.fn()
-}));
-
-jest.mock('../../src/utils/logger', () => ({
-  info: jest.fn(),
-  error: jest.fn(),
-  warn: jest.fn(),
-  debug: jest.fn()
-}));
-
-jest.mock('../../src/config', () => ({
-  features: {
-    mqtt: {
-      enabled: true,
-      port: 1883,
-      host: '0.0.0.0',
-      authentication: {
-        enabled: true,
-        tokenBased: true
-      },
-      qos: {
-        default: 1,
-        dataStream: 1
-      }
-    }
-  }
-}));
-
-jest.mock('../../src/adapters/mqttAdapter', () => ({
-  normalizeMessage: jest.fn(),
-  validateMessage: jest.fn()
-}));
-
-jest.mock('../../src/services/messageRouter', () => ({
-  route: jest.fn()
-}));
-
-jest.mock('../../src/models/initModels', () => ({
-  DeviceToken: {
-    findOne: jest.fn()
-  }
-}));
 
 describe('MQTTService', () => {
   let mockServer;
@@ -59,7 +13,47 @@ describe('MQTTService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    
+    jest.resetModules();
+
+    jest.mock('mqtt', () => ({
+      createServer: jest.fn()
+    }));
+    jest.mock('../../src/utils/logger', () => ({
+      info: jest.fn(),
+      error: jest.fn(),
+      warn: jest.fn(),
+      debug: jest.fn()
+    }));
+    jest.mock('../../src/config', () => ({
+      features: {
+        mqtt: {
+          enabled: true,
+          port: 1883,
+          host: '0.0.0.0',
+          authentication: {
+            enabled: true,
+            tokenBased: true
+          },
+          qos: {
+            default: 1,
+            dataStream: 1
+          }
+        }
+      }
+    }));
+    jest.mock('../../src/adapters/mqttAdapter', () => ({
+      normalizeMessage: jest.fn(),
+      validateMessage: jest.fn()
+    }));
+    jest.mock('../../src/services/messageRouter', () => ({
+      route: jest.fn()
+    }));
+    jest.mock('../../src/models/initModels', () => ({
+      DeviceToken: {
+        findOne: jest.fn()
+      }
+    }));
+
     // Get fresh instances of mocked modules
     MQTTAdapter = require('../../src/adapters/mqttAdapter');
     messageRouter = require('../../src/services/messageRouter');
@@ -86,7 +80,6 @@ describe('MQTTService', () => {
     require('mqtt').createServer.mockReturnValue(mockServer);
     
     // Reset the singleton instance
-    jest.resetModules();
     mqttService = require('../../src/services/mqttService');
   });
 
@@ -155,6 +148,7 @@ describe('MQTTService', () => {
   describe('handleClientConnect', () => {
     beforeEach(() => {
       mqttService.initialize();
+      mockClient.connack = jest.fn();
     });
 
     it('should authenticate client successfully', async () => {
@@ -162,19 +156,16 @@ describe('MQTTService', () => {
         username: 'test-device',
         password: 'valid-token'
       };
-      
-      // Mock authentication success
       DeviceToken.findOne.mockResolvedValue({
         id: 1,
         token: 'valid-token',
         deviceUuid: 'test-device'
       });
-      
-      // Get the connect handler function
-      const connectHandler = mockClient.on.mock.calls.find(call => call[0] === 'connect')[1];
-      
-      await connectHandler(mockClient, packet);
-      
+      mqttService.handleClientConnection(mockClient);
+      const connectCall = mockClient.on.mock.calls.find(call => call[0] === 'connect');
+      expect(connectCall).toBeDefined();
+      const connectHandler = connectCall[1];
+      await connectHandler.call(mockClient, packet);
       expect(mockClient.connack).toHaveBeenCalledWith({ returnCode: 0 });
       expect(logger.info).toHaveBeenCalledWith('MQTT client authenticated: test-client-id');
     });
@@ -184,15 +175,12 @@ describe('MQTTService', () => {
         username: 'test-device',
         password: 'invalid-token'
       };
-      
-      // Mock authentication failure
       DeviceToken.findOne.mockResolvedValue(null);
-      
-      // Get the connect handler function
-      const connectHandler = mockClient.on.mock.calls.find(call => call[0] === 'connect')[1];
-      
-      await connectHandler(mockClient, packet);
-      
+      mqttService.handleClientConnection(mockClient);
+      const connectCall = mockClient.on.mock.calls.find(call => call[0] === 'connect');
+      expect(connectCall).toBeDefined();
+      const connectHandler = connectCall[1];
+      await connectHandler.call(mockClient, packet);
       expect(mockClient.connack).toHaveBeenCalledWith({ returnCode: 4 });
       expect(logger.warn).toHaveBeenCalledWith('Authentication failed for client: test-client-id');
     });
@@ -202,15 +190,12 @@ describe('MQTTService', () => {
         username: 'test-device',
         password: 'valid-token'
       };
-      
-      // Mock authentication error
       DeviceToken.findOne.mockRejectedValue(new Error('Database error'));
-      
-      // Get the connect handler function
-      const connectHandler = mockClient.on.mock.calls.find(call => call[0] === 'connect')[1];
-      
-      await connectHandler(mockClient, packet);
-      
+      mqttService.handleClientConnection(mockClient);
+      const connectCall = mockClient.on.mock.calls.find(call => call[0] === 'connect');
+      expect(connectCall).toBeDefined();
+      const connectHandler = connectCall[1];
+      await connectHandler.call(mockClient, packet);
       expect(mockClient.connack).toHaveBeenCalledWith({ returnCode: 4 });
       expect(logger.error).toHaveBeenCalledWith('Error handling client connect: Database error');
     });
@@ -483,20 +468,31 @@ describe('MQTTService', () => {
   });
 
   describe('publish', () => {
+    let client1, client2;
     beforeEach(() => {
       mqttService.initialize();
-      mqttService.clients.set('client1', mockClient);
-      mqttService.clients.set('client2', { ...mockClient, id: 'client2' });
+      // Clear and set up clients after initialization
+      mqttService.clients.clear();
+      client1 = { ...mockClient, publish: jest.fn() };
+      client2 = { ...mockClient, id: 'client2', publish: jest.fn() };
+      mqttService.clients.set('client1', client1);
+      mqttService.clients.set('client2', client2);
     });
 
     it('should publish message to all clients', () => {
       const topic = 'devices/test-device/commands';
       const payload = { command: 'restart' };
       const options = { qos: 2, retain: true };
-      
+      const client1 = mqttService.clients.get('client1');
+      const client2 = mqttService.clients.get('client2');
       mqttService.publish(topic, payload, options);
-      
-      expect(mockClient.publish).toHaveBeenCalledWith({
+      expect(client1.publish).toHaveBeenCalledWith({
+        topic: 'devices/test-device/commands',
+        payload: JSON.stringify({ command: 'restart' }),
+        qos: 2,
+        retain: true
+      });
+      expect(client2.publish).toHaveBeenCalledWith({
         topic: 'devices/test-device/commands',
         payload: JSON.stringify({ command: 'restart' }),
         qos: 2,
@@ -507,10 +503,16 @@ describe('MQTTService', () => {
     it('should use default options when not provided', () => {
       const topic = 'devices/test-device/commands';
       const payload = { command: 'restart' };
-      
+      const client1 = mqttService.clients.get('client1');
+      const client2 = mqttService.clients.get('client2');
       mqttService.publish(topic, payload);
-      
-      expect(mockClient.publish).toHaveBeenCalledWith({
+      expect(client1.publish).toHaveBeenCalledWith({
+        topic: 'devices/test-device/commands',
+        payload: JSON.stringify({ command: 'restart' }),
+        qos: 1,
+        retain: false
+      });
+      expect(client2.publish).toHaveBeenCalledWith({
         topic: 'devices/test-device/commands',
         payload: JSON.stringify({ command: 'restart' }),
         qos: 1,
@@ -533,6 +535,7 @@ describe('MQTTService', () => {
       mqttService.clients.set('client1', {});
       mqttService.clients.set('client2', {});
       mqttService.authenticatedClients.set('client1', {});
+      mqttService.isInitialized = true;
     });
 
     it('should return server statistics', () => {

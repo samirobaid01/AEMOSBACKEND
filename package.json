@@ -53,6 +53,7 @@
     "hpp": "^0.2.3",
     "joi": "^17.12.2",
     "jsonwebtoken": "^9.0.2",
+    "mqtt": "^5.3.5",
     "mysql2": "^3.9.2",
     "rate-limiter-flexible": "^7.1.0",
     "response-time": "^2.3.3",

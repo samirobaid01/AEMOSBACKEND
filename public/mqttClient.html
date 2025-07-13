@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MQTT Client Test</title>
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, textarea, select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+        }
+        .status.connected {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .log {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .log-entry {
+            margin-bottom: 5px;
+            padding: 2px 0;
+        }
+        .log-entry.info {
+            color: #007bff;
+        }
+        .log-entry.success {
+            color: #28a745;
+        }
+        .log-entry.error {
+            color: #dc3545;
+        }
+        .log-entry.warn {
+            color: #ffc107;
+        }
+        .topic-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .topic-item {
+            background-color: #e9ecef;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 12px;
+        }
+        .topic-item.active {
+            background-color: #28a745;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <h1>MQTT Client Test</h1>
+    
+    <div class="container">
+        <h2>Connection Settings</h2>
+        <div class="form-group">
+            <label for="brokerUrl">Broker URL:</label>
+            <input type="text" id="brokerUrl" value="ws://localhost:9001" placeholder="ws://localhost:9001">
+        </div>
+        <div class="form-group">
+            <label for="deviceUuid">Device UUID:</label>
+            <input type="text" id="deviceUuid" value="test-device-123" placeholder="test-device-123">
+        </div>
+        <div class="form-group">
+            <label for="deviceToken">Device Token:</label>
+            <input type="text" id="deviceToken" value="test-token-123" placeholder="test-token-123">
+        </div>
+        <div class="form-group">
+            <label for="clientId">Client ID:</label>
+            <input type="text" id="clientId" value="mqtt-test-client" placeholder="mqtt-test-client">
+        </div>
+        
+        <button id="connectBtn">Connect</button>
+        <button id="disconnectBtn" disabled>Disconnect</button>
+        
+        <div id="connectionStatus" class="status disconnected">
+            Disconnected
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>Publish Message</h2>
+        <div class="form-group">
+            <label for="publishTopic">Topic:</label>
+            <input type="text" id="publishTopic" value="devices/test-device-123/datastream" placeholder="devices/device-uuid/datastream">
+        </div>
+        <div class="form-group">
+            <label for="publishPayload">Payload (JSON):</label>
+            <textarea id="publishPayload" rows="4" placeholder='{"value": "25.6", "telemetryDataId": 1, "token": "test-token-123"}'>{
+  "value": "25.6",
+  "telemetryDataId": 1,
+  "token": "test-token-123"
+}</textarea>
+        </div>
+        <div class="form-group">
+            <label for="publishQos">QoS:</label>
+            <select id="publishQos">
+                <option value="0">0 - At most once</option>
+                <option value="1" selected>1 - At least once</option>
+                <option value="2">2 - Exactly once</option>
+            </select>
+        </div>
+        <button id="publishBtn" disabled>Publish</button>
+    </div>
+
+    <div class="container">
+        <h2>Subscribe to Topics</h2>
+        <div class="form-group">
+            <label for="subscribeTopic">Topic:</label>
+            <input type="text" id="subscribeTopic" value="devices/test-device-123/+" placeholder="devices/device-uuid/+">
+        </div>
+        <div class="form-group">
+            <label for="subscribeQos">QoS:</label>
+            <select id="subscribeQos">
+                <option value="0">0 - At most once</option>
+                <option value="1" selected>1 - At least once</option>
+                <option value="2">2 - Exactly once</option>
+            </select>
+        </div>
+        <button id="subscribeBtn" disabled>Subscribe</button>
+        <button id="unsubscribeBtn" disabled>Unsubscribe</button>
+        
+        <div id="subscribedTopics" class="topic-list">
+            <!-- Subscribed topics will appear here -->
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>Message Log</h2>
+        <button id="clearLogBtn">Clear Log</button>
+        <div id="messageLog" class="log"></div>
+    </div>
+
+    <script>
+        let client = null;
+        let subscribedTopics = new Set();
+
+        // DOM elements
+        const connectBtn = document.getElementById('connectBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+        const publishBtn = document.getElementById('publishBtn');
+        const subscribeBtn = document.getElementById('subscribeBtn');
+        const unsubscribeBtn = document.getElementById('unsubscribeBtn');
+        const clearLogBtn = document.getElementById('clearLogBtn');
+        
+        const connectionStatus = document.getElementById('connectionStatus');
+        const messageLog = document.getElementById('messageLog');
+        const subscribedTopicsDiv = document.getElementById('subscribedTopics');
+
+        // Connection settings
+        const brokerUrl = document.getElementById('brokerUrl');
+        const deviceUuid = document.getElementById('deviceUuid');
+        const deviceToken = document.getElementById('deviceToken');
+        const clientId = document.getElementById('clientId');
+
+        // Publish settings
+        const publishTopic = document.getElementById('publishTopic');
+        const publishPayload = document.getElementById('publishPayload');
+        const publishQos = document.getElementById('publishQos');
+
+        // Subscribe settings
+        const subscribeTopic = document.getElementById('subscribeTopic');
+        const subscribeQos = document.getElementById('subscribeQos');
+
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.className = `log-entry ${type}`;
+            logEntry.textContent = `[${timestamp}] ${message}`;
+            messageLog.appendChild(logEntry);
+            messageLog.scrollTop = messageLog.scrollHeight;
+        }
+
+        function updateConnectionStatus(connected) {
+            if (connected) {
+                connectionStatus.textContent = 'Connected';
+                connectionStatus.className = 'status connected';
+                connectBtn.disabled = true;
+                disconnectBtn.disabled = false;
+                publishBtn.disabled = false;
+                subscribeBtn.disabled = false;
+                unsubscribeBtn.disabled = false;
+            } else {
+                connectionStatus.textContent = 'Disconnected';
+                connectionStatus.className = 'status disconnected';
+                connectBtn.disabled = false;
+                disconnectBtn.disabled = true;
+                publishBtn.disabled = true;
+                subscribeBtn.disabled = true;
+                unsubscribeBtn.disabled = true;
+            }
+        }
+
+        function updateSubscribedTopics() {
+            subscribedTopicsDiv.innerHTML = '';
+            subscribedTopics.forEach(topic => {
+                const topicItem = document.createElement('div');
+                topicItem.className = 'topic-item active';
+                topicItem.textContent = topic;
+                subscribedTopicsDiv.appendChild(topicItem);
+            });
+        }
+
+        connectBtn.addEventListener('click', () => {
+            const options = {
+                clientId: clientId.value,
+                username: deviceUuid.value,
+                password: deviceToken.value,
+                clean: true,
+                reconnectPeriod: 1000,
+                connectTimeout: 30 * 1000
+            };
+
+            log(`Connecting to ${brokerUrl.value}...`, 'info');
+            
+            try {
+                client = mqtt.connect(brokerUrl.value, options);
+
+                client.on('connect', () => {
+                    log('Connected to MQTT broker', 'success');
+                    updateConnectionStatus(true);
+                });
+
+                client.on('message', (topic, message) => {
+                    try {
+                        const payload = JSON.parse(message.toString());
+                        log(`Received message on ${topic}: ${JSON.stringify(payload, null, 2)}`, 'success');
+                    } catch (e) {
+                        log(`Received message on ${topic}: ${message.toString()}`, 'success');
+                    }
+                });
+
+                client.on('error', (error) => {
+                    log(`Connection error: ${error.message}`, 'error');
+                });
+
+                client.on('close', () => {
+                    log('Disconnected from MQTT broker', 'warn');
+                    updateConnectionStatus(false);
+                    subscribedTopics.clear();
+                    updateSubscribedTopics();
+                });
+
+                client.on('reconnect', () => {
+                    log('Reconnecting to MQTT broker...', 'info');
+                });
+
+            } catch (error) {
+                log(`Failed to connect: ${error.message}`, 'error');
+            }
+        });
+
+        disconnectBtn.addEventListener('click', () => {
+            if (client) {
+                client.end();
+                client = null;
+            }
+        });
+
+        publishBtn.addEventListener('click', () => {
+            if (!client) {
+                log('Not connected to MQTT broker', 'error');
+                return;
+            }
+
+            try {
+                const topic = publishTopic.value;
+                const payload = publishPayload.value;
+                const qos = parseInt(publishQos.value);
+
+                // Try to parse as JSON, if it fails, send as string
+                let message;
+                try {
+                    message = JSON.parse(payload);
+                } catch (e) {
+                    message = payload;
+                }
+
+                client.publish(topic, JSON.stringify(message), { qos }, (error) => {
+                    if (error) {
+                        log(`Failed to publish message: ${error.message}`, 'error');
+                    } else {
+                        log(`Message published to ${topic}`, 'success');
+                    }
+                });
+            } catch (error) {
+                log(`Error publishing message: ${error.message}`, 'error');
+            }
+        });
+
+        subscribeBtn.addEventListener('click', () => {
+            if (!client) {
+                log('Not connected to MQTT broker', 'error');
+                return;
+            }
+
+            const topic = subscribeTopic.value;
+            const qos = parseInt(subscribeQos.value);
+
+            client.subscribe(topic, { qos }, (error, granted) => {
+                if (error) {
+                    log(`Failed to subscribe: ${error.message}`, 'error');
+                } else {
+                    granted.forEach(g => {
+                        subscribedTopics.add(g.topic);
+                        log(`Subscribed to ${g.topic} with QoS ${g.qos}`, 'success');
+                    });
+                    updateSubscribedTopics();
+                }
+            });
+        });
+
+        unsubscribeBtn.addEventListener('click', () => {
+            if (!client) {
+                log('Not connected to MQTT broker', 'error');
+                return;
+            }
+
+            const topic = subscribeTopic.value;
+
+            client.unsubscribe(topic, (error) => {
+                if (error) {
+                    log(`Failed to unsubscribe: ${error.message}`, 'error');
+                } else {
+                    subscribedTopics.delete(topic);
+                    log(`Unsubscribed from ${topic}`, 'success');
+                    updateSubscribedTopics();
+                }
+            });
+        });
+
+        clearLogBtn.addEventListener('click', () => {
+            messageLog.innerHTML = '';
+        });
+
+        // Auto-update topic when device UUID changes
+        deviceUuid.addEventListener('input', () => {
+            const uuid = deviceUuid.value;
+            publishTopic.value = `devices/${uuid}/datastream`;
+            subscribeTopic.value = `devices/${uuid}/+`;
+        });
+
+        // Initialize
+        log('MQTT Client Test Page Loaded', 'info');
+        log('Make sure your MQTT broker is running on the specified URL', 'info');
+        log('For local testing, you may need to use a WebSocket proxy like mosquitto_ws', 'info');
+    </script>
+</body>
+</html> 

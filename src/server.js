@@ -5,6 +5,7 @@ const { initModels } = require('./models/initModels');
 const config = require('./config');
 const logger = require('./utils/logger');
 const socketManager = require('./utils/socketManager');
+const mqttService = require('./services/mqttService');
 
 // Set port from environment variables or default
 const PORT = config.server.port;
@@ -49,11 +50,20 @@ const startServer = async () => {
       logger.info('Socket.io server initialized');
     }
     
+    // Initialize MQTT server if enabled in features
+    if (config.features.mqtt && config.features.mqtt.enabled) {
+      mqttService.initialize();
+      logger.info('MQTT server initialized');
+    }
+    
     // Start server
     server.listen(PORT, () => {
       logger.info(`Server running in ${config.server.nodeEnv} mode on port ${PORT}`);
       if (config.features.socketio && config.features.socketio.enabled) {
         logger.info(`Socket.io server running on port ${PORT}`);
+      }
+      if (config.features.mqtt && config.features.mqtt.enabled) {
+        logger.info(`MQTT server running on port ${config.features.mqtt.port}`);
       }
     });
   } catch (error) {
@@ -75,6 +85,23 @@ process.on('uncaughtException', (err) => {
   logger.error('UNCAUGHT EXCEPTION! 💥 Shutting down...');
   logger.error(err.name, err.message);
   process.exit(1);
+});
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  logger.info('SIGTERM received, shutting down gracefully');
+  if (config.features.mqtt && config.features.mqtt.enabled) {
+    mqttService.stop();
+  }
+  process.exit(0);
+});
+
+process.on('SIGINT', () => {
+  logger.info('SIGINT received, shutting down gracefully');
+  if (config.features.mqtt && config.features.mqtt.enabled) {
+    mqttService.stop();
+  }
+  process.exit(0);
 });
 
 // Start the server

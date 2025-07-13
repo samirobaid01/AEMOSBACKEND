@@ -56,5 +56,24 @@ module.exports = {
     cors: process.env.SOCKET_IO_CORS !== 'false', // Default to true
     pingInterval: parseInt(process.env.SOCKET_IO_PING_INTERVAL || 10000, 10),
     pingTimeout: parseInt(process.env.SOCKET_IO_PING_TIMEOUT || 5000, 10)
+  },
+  
+  mqtt: {
+    enabled: process.env.ENABLE_MQTT === 'true',
+    port: parseInt(process.env.MQTT_PORT || 1883, 10),
+    host: process.env.MQTT_HOST || '0.0.0.0',
+    authentication: {
+      enabled: process.env.MQTT_AUTH_ENABLED !== 'false',
+      tokenBased: process.env.MQTT_TOKEN_AUTH === 'true'
+    },
+    topics: {
+      dataStream: 'devices/+/datastream',
+      deviceStatus: 'devices/+/status',
+      commands: 'devices/+/commands'
+    },
+    qos: {
+      default: parseInt(process.env.MQTT_DEFAULT_QOS || 1, 10),
+      dataStream: parseInt(process.env.MQTT_DATASTREAM_QOS || 1, 10)
+    }
   }
 };

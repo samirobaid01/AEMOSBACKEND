@@ -1,12 +1,13 @@
 /**
  * MQTT Service for handling MQTT connections, authentication, and message routing
  */
-const mqtt = require('mqtt');
+const aedesFactory = require('aedes');
+const net = require('net');
 const logger = require('../utils/logger');
 const config = require('../config');
 const MQTTAdapter = require('../adapters/mqttAdapter');
 const messageRouter = require('./messageRouter');
-const { DeviceToken } = require('../models/initModels');
+const { DeviceToken, Sensor } = require('../models/initModels');
 
 class MQTTService {
   constructor() {
@@ -17,7 +18,7 @@ class MQTTService {
   }
   
   /**
-   * Initialize MQTT server
+   * Initialize MQTT server (using aedes broker)
    * @param {number} port - MQTT server port
    * @param {string} host - MQTT server host
    */
@@ -26,30 +27,74 @@ class MQTTService {
       logger.warn('MQTT server already initialized');
       return;
     }
-    
+
     try {
-      // Create MQTT server
-      this.server = mqtt.createServer({
-        port: port,
-        host: host
-      });
-      
+      // Create aedes broker instance
+      this.aedes = aedesFactory();
+      // Create TCP server for MQTT
+      this.server = net.createServer(this.aedes.handle);
+
       // Handle client connections
-      this.server.on('client', (client) => {
-        this.handleClientConnection(client);
+      this.aedes.on('client', (client) => {
+        logger.info(`MQTT client connected: ${client.id}`);
+        this.clients.set(client.id, client);
       });
-      
+
+      // Handle client disconnect
+      this.aedes.on('clientDisconnect', (client) => {
+        logger.info(`MQTT client disconnected: ${client.id}`);
+        this.clients.delete(client.id);
+        this.authenticatedClients.delete(client.id);
+      });
+
+      // Authenticate clients
+      this.aedes.authenticate = async (client, username, password, callback) => {
+        try {
+          if (!config.features.mqtt.authentication.enabled) {
+            return callback(null, true);
+          }
+          const isAuthenticated = await this.authenticateClient(client, username && username.toString(), password && password.toString());
+          if (!isAuthenticated) {
+            logger.warn(`Authentication failed for client: ${client.id}`);
+            return callback(null, false);
+          }
+          logger.info(`MQTT client authenticated: ${client.id}`);
+          return callback(null, true);
+        } catch (error) {
+          logger.error(`Error authenticating client: ${error.message}`);
+          return callback(error, false);
+        }
+      };
+
+      // Handle published messages
+      this.aedes.on('publish', async (packet, client) => {
+        if (client) {
+          await this.handlePublish(client, packet);
+        }
+      });
+
+      // Handle subscriptions
+      this.aedes.on('subscribe', (subscriptions, client) => {
+        // Optionally handle/validate subscriptions here
+        // You can call this.handleSubscribe(client, { subscriptions }) if needed
+      });
+
+      // Handle unsubscriptions
+      this.aedes.on('unsubscribe', (subscriptions, client) => {
+        // Optionally handle/validate unsubscriptions here
+        // You can call this.handleUnsubscribe(client, { unsubscriptions: subscriptions }) if needed
+      });
+
       // Handle server errors
       this.server.on('error', (error) => {
         logger.error(`MQTT server error: ${error.message}`);
       });
-      
+
       // Start server
-      this.server.listen(() => {
+      this.server.listen(port, host, () => {
         logger.info(`MQTT server started on ${host}:${port}`);
         this.isInitialized = true;
       });
-      
     } catch (error) {
       logger.error(`Failed to initialize MQTT server: ${error.message}`);
       throw error;
@@ -111,7 +156,7 @@ class MQTTService {
         const isAuthenticated = await this.authenticateClient(client, username, password);
         
         if (!isAuthenticated) {
-          logger.warn(`Authentication failed for client: ${client.id}`);
+          logger.warn(`Authentication failed (onHandleClientConnect) for client: ${client.id}`);
           client.connack({ returnCode: 4 }); // Bad username or password
           return;
         }
@@ -145,12 +190,16 @@ class MQTTService {
         const deviceUuid = username;
         const token = password;
         
-        // Find device token
+        // Find device token and join with sensor to check if sensor's uuid matches device uuid
         const deviceToken = await DeviceToken.findOne({
           where: { 
             token: token,
-            deviceUuid: deviceUuid
-          }
+            status: 'active'
+          },
+          include: [{
+            model: Sensor,
+            where: { uuid: deviceUuid }
+          }]
         });
         
         if (!deviceToken) {
@@ -166,6 +215,7 @@ class MQTTService {
         this.authenticatedClients.set(client.id, {
           deviceUuid,
           token,
+          sensorId: deviceToken.sensorId,
           authenticatedAt: new Date()
         });
         
@@ -346,6 +396,11 @@ class MQTTService {
       this.server.close(() => {
         logger.info('MQTT server stopped');
         this.isInitialized = false;
+      });
+    }
+    if (this.aedes) {
+      this.aedes.close(() => {
+        logger.info('Aedes broker closed');
       });
     }
   }

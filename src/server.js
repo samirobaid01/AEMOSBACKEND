@@ -51,6 +51,8 @@ const startServer = async () => {
     }
     
     // Initialize MQTT server if enabled in features
+    console.log('config.features.mqtt', config.features.mqtt);
+    console.log('config.features.mqtt.enabled', config.features.mqtt.enabled);
     if (config.features.mqtt && config.features.mqtt.enabled) {
       mqttService.initialize();
       logger.info('MQTT server initialized');

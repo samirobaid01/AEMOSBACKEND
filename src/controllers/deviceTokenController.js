@@ -1,4 +1,5 @@
 const deviceTokenService = require('../services/deviceTokenService');
+const sensorService = require('../services/sensorService');
 const logger = require('../utils/logger');
 
 // Create a new token for a sensor
@@ -7,6 +8,7 @@ const createToken = async (req, res) => {
     const { sensorId, expiresAt } = req.body;
     
     const token = await deviceTokenService.createToken(sensorId, expiresAt);
+    const sensor = await sensorService.getSensorById(sensorId);
     
     res.status(201).json({
       status: 'success',
@@ -15,7 +17,8 @@ const createToken = async (req, res) => {
         token: token.token,
         sensorId: token.sensorId,
         expiresAt: token.expiresAt,
-        createdAt: token.createdAt
+        createdAt: token.createdAt,
+        uuid: sensor.uuid
       }
     });
   } catch (error) {

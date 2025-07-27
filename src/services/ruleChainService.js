@@ -11,6 +11,8 @@ const {
 const deviceStateInstanceService = require('./deviceStateInstanceService');
 const notificationManager = require('../utils/notificationManager');
 const { parseDuration } = require('../utils/timeUtils');
+const mqttPublisher = require('./mqttPublisherService');
+const logger = require('../utils/logger');
 const sequelize = require('../config/database');
 const { Sequelize } = require('sequelize');
 // Ownership check function for middleware
@@ -73,10 +75,10 @@ const getRuleChainNodeForOwnershipCheck = async (id) => {
       id: ruleChainNode.id,
       organizationId: null
     };
-  } catch (error) {
-    console.error('Error in getRuleChainNodeForOwnershipCheck:', error.message);
-    return null;
-  }
+      } catch (error) {
+      logger.error('Error in getRuleChainNodeForOwnershipCheck:', error.message);
+      return null;
+    }
 };
 
 /**
@@ -108,7 +110,7 @@ const ruleChainNodeBelongsToOrganization = async (nodeId, organizationId) => {
     
     return results[0].count > 0;
   } catch (error) {
-    console.error(`Error in ruleChainNodeBelongsToOrganization:`, error);
+    logger.error(`Error in ruleChainNodeBelongsToOrganization:`, error);
     return false;
   }
 };
@@ -777,7 +779,7 @@ class RuleChainService {
         sensorData
       };
     } catch (error) {
-      console.error('Error in _performAction:', error);
+      logger.error('Error in _performAction:', error);
       return {
         status: 'error',
         error: error.message,
@@ -871,7 +873,7 @@ class RuleChainService {
           sensorData.push(sensorDataObject);
         }
       } catch (error) {
-        console.error(`Error collecting sensor data for UUID ${UUID}:`, error);
+        logger.error(`Error collecting sensor data for UUID ${UUID}:`, error);
         // Continue with next sensor
       }
     }
@@ -921,7 +923,7 @@ class RuleChainService {
           deviceData.push(deviceDataObject);
         }
       } catch (error) {
-        console.error(`Error collecting device data for UUID ${UUID}:`, error);
+        logger.error(`Error collecting device data for UUID ${UUID}:`, error);
         // Continue with next device
       }
     }
@@ -984,7 +986,7 @@ class RuleChainService {
               const config = JSON.parse(node.config || '{}');
               this._extractRequirements(config, sensorReqs, deviceReqs);
             } catch (error) {
-              console.error(
+              logger.error(
                 `Error parsing config for node ${node.id} in rule chain ${ruleChain.id}:`,
                 error
               );
@@ -1053,7 +1055,7 @@ class RuleChainService {
                   };
                 }
               } catch (error) {
-                console.error(`Error processing device state change for action ${action.nodeId}:`, error);
+                logger.error(`Error processing device state change for action ${action.nodeId}:`, error);
                 action.notificationSent = false;
                 action.error = error.message;
               }
@@ -1069,6 +1071,20 @@ class RuleChainService {
           // Continue with next rule chain
         }
       }
+
+      // 🎯 Publish rule chain execution results to MQTT
+      process.nextTick(async () => {
+        try {
+          await mqttPublisher.publishRuleChainResult({
+            organizationId,
+            totalRuleChains: ruleChains.length,
+            results,
+          }, organizationId);
+          logger.debug(`Rule chain execution results published to MQTT for organization ${organizationId}`);
+        } catch (error) {
+          logger.error(`Failed to publish rule chain results to MQTT: ${error.message}`);
+        }
+      });
 
       return {
         organizationId,

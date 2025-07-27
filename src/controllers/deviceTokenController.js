@@ -14,6 +14,7 @@ const createToken = async (req, res) => {
         id: token.id,
         token: token.token,
         sensorId: token.sensorId,
+        deviceUuid: token.Sensor?.uuid,
         expiresAt: token.expiresAt,
         createdAt: token.createdAt
       }
@@ -28,6 +29,8 @@ const createToken = async (req, res) => {
         message: 'Sensor not found'
       });
     }
+    
+
     
     res.status(500).json({
       status: 'error',

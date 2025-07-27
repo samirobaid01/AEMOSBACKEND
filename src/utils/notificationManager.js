@@ -5,6 +5,7 @@
 const socketManager = require('./socketManager');
 const logger = require('./logger');
 const config = require('../config');
+const mqttPublisher = require('../services/mqttPublisherService');
 
 class NotificationManager {
   constructor(options = {}) {
@@ -250,6 +251,16 @@ class NotificationManager {
         // Also emit to room with device ID for backward compatibility
         socketManager.broadcastToRoom(`device-${metadata.deviceId}`, 'device-state-change', notification);
       }
+
+      // 🎯 Publish to MQTT as well
+      process.nextTick(async () => {
+        try {
+          await mqttPublisher.publishDeviceStateChange(metadata);
+          logger.debug(`Device state change published to MQTT for device ${metadata.deviceUuid}`);
+        } catch (error) {
+          logger.error(`Failed to publish device state change to MQTT: ${error.message}`);
+        }
+      });
 
       // Log high priority notifications
       if (priority === 'high') {

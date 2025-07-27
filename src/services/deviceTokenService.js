@@ -78,9 +78,16 @@ const createToken = async (sensorId, expiresAt = null) => {
       status: 'active'
     });
 
-    // Skip caching on creation - will be cached on first use
-    
-    return deviceToken;
+    // Fetch the created token with sensor data to include deviceUuid
+    const tokenWithSensor = await DeviceToken.findOne({
+      where: { id: deviceToken.id },
+      include: [{ 
+        model: Sensor, 
+        attributes: ['uuid'] 
+      }]
+    });
+
+    return tokenWithSensor;
   } catch (error) {
     logger.error(`Error creating device token: ${error.message}`);
     throw error;

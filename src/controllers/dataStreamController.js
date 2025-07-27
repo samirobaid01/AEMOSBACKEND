@@ -7,6 +7,7 @@ const DataStream = require('../models/DataStream');
 const logger = require('../utils/logger');
 const socketManager = require('../utils/socketManager');
 const {ruleChainService} = require('../services/ruleChainService');
+const mqttPublisher = require('../services/mqttPublisherService');
 
 // Get all data streams
 const getAllDataStreams = async (req, res, next) => {
@@ -261,18 +262,39 @@ const createDataStreamWithToken = async (req, res) => {
       status: 'success',
       data: newDataStream
     });
-    process.nextTick(() => {
+    process.nextTick(async () => {
+      // Check if rule chain triggering should be skipped (for internal publisher messages)
+      const skipRuleChainTrigger = req.body.skipRuleChainTrigger === true;
+      
       // Determine priority based on business rules
       // For example, if there's an 'urgent' flag or value exceeds thresholds
       const isPriority = req.body.urgent === true || 
                         (req.body.thresholds && isThresholdExceeded(req.body.value, req.body.thresholds));
       
+      // Send Socket.IO notification
       notificationManager.queueDataStreamNotification(
         newDataStream, 
         isPriority ? 'high' : 'normal',
         config.broadcastAll
       );
-      ruleChainService.trigger();
+
+      // 🎯 Publish to MQTT as well
+      try {
+        const deviceUuid = req.device?.uuid || req.deviceUuid;
+        if (deviceUuid) {
+          await mqttPublisher.publishDataStream(newDataStream, deviceUuid);
+          logger.debug(`Data stream published to MQTT for device ${deviceUuid}`);
+        }
+      } catch (error) {
+        logger.error(`Failed to publish data stream to MQTT: ${error.message}`);
+      }
+
+      // Trigger rule engine only if not skipped
+      if (!skipRuleChainTrigger) {
+        ruleChainService.trigger();
+      } else {
+        logger.info(`Skipping rule chain trigger for internal publisher data stream`);
+      }
     });
     
   } catch (error) {

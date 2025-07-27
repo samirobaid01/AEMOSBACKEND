@@ -4,8 +4,8 @@
   "description": "AEMOS Backend API",
   "main": "src/server.js",
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "nodemon",
+    "start": "ENABLE_MQTT=true MQTT_TOKEN_AUTH=true node src/server.js",
+    "dev": "ENABLE_MQTT=true MQTT_TOKEN_AUTH=true nodemon",
     "test": "jest --detectOpenHandles",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
@@ -41,6 +41,7 @@
   },
   "homepage": "https://github.com/samirobaid01/AEMOSBACKEND#readme",
   "dependencies": {
+    "aedes": "^0.51.3",
     "bcrypt": "^5.1.1",
     "compression": "^1.8.0",
     "cors": "^2.8.5",

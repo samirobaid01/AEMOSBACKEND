@@ -52,8 +52,18 @@ const startServer = async () => {
     
     // Initialize MQTT server if enabled in features
     if (config.features.mqtt && config.features.mqtt.enabled) {
-      mqttService.initialize();
-      logger.info('MQTT server initialized');
+      try {
+        mqttService.initialize();
+        logger.info('MQTT server initialized');
+        
+        // Initialize MQTT publisher
+        const mqttPublisher = require('./services/mqttPublisherService');
+        await mqttPublisher.initialize();
+        logger.info('MQTT publisher initialized');
+      } catch (error) {
+        logger.error(`Failed to initialize MQTT server: ${error.message}`);
+        throw error;
+      }
     }
     
     // Start server

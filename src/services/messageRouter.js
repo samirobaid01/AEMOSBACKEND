@@ -24,6 +24,12 @@ class MessageRouter {
     // Device status routes
     this.routes.set('deviceStatus', this.handleDeviceStatus.bind(this));
     
+    // Device state routes
+    this.routes.set('deviceState', this.handleDeviceState.bind(this));
+    
+    // Rule chain routes
+    this.routes.set('ruleChain', this.handleRuleChain.bind(this));
+    
     // Command routes
     this.routes.set('commands', this.handleCommands.bind(this));
     
@@ -109,17 +115,36 @@ class MessageRouter {
         return CommonAdapter.createErrorResponse('Invalid device UUID in topic', 'INVALID_DEVICE_UUID');
       }
       
-      // Authenticate device
+      // Check if this is from internal publisher (no authentication needed)
+      const isInternalPublisher = message.clientId && message.clientId.startsWith('aemos-publisher-');
+      
+      // Skip processing entirely for internal publisher messages to prevent feedback loops
+      if (isInternalPublisher) {
+        logger.info(`Skipping data stream processing for internal publisher message from ${message.clientId} to prevent feedback loop`);
+        return CommonAdapter.createSuccessResponse({
+          message: 'Internal publisher data stream message acknowledged (no processing)',
+          topic: message.topic,
+          deviceUuid: deviceUuid,
+          skipped: true
+        });
+      }
+      
+      // Authenticate device for external clients
       const device = await this.authenticateDevice(deviceUuid, message);
       if (!device) {
         return CommonAdapter.createErrorResponse('Device authentication failed', 'AUTHENTICATION_FAILED');
+      }
+      
+      if (!device) {
+        return CommonAdapter.createErrorResponse('Device not found', 'DEVICE_NOT_FOUND');
       }
       
       // Create mock request object for controller
       const mockReq = {
         body: message.payload,
         sensorId: device.sensorId,
-        device: device
+        device: device,
+        deviceUuid: device.uuid
       };
       
       const mockRes = {
@@ -175,6 +200,82 @@ class MessageRouter {
     } catch (error) {
       logger.error(`Error handling device status: ${error.message}`);
       return CommonAdapter.createErrorResponse(`Device status error: ${error.message}`, 'DEVICE_STATUS_ERROR');
+    }
+  }
+  
+  /**
+   * Handle device state messages
+   * @param {Object} message - Message object
+   * @returns {Promise<Object>} Processing result
+   */
+  async handleDeviceState(message) {
+    try {
+      // Skip processing if this is from internal publisher to prevent feedback loops
+      if (message.clientId && message.clientId.startsWith('aemos-publisher-')) {
+        logger.info(`Skipping device state processing for internal publisher message from ${message.clientId}`);
+        return CommonAdapter.createSuccessResponse({
+          message: 'Internal publisher message acknowledged (no processing)',
+          topic: message.topic,
+          deviceUuid: message.payload.deviceUuid,
+          skipped: true
+        });
+      }
+
+      // For device state messages from external sources, log and acknowledge
+      logger.info(`Device state message received: ${message.topic}`, {
+        deviceUuid: message.payload.deviceUuid,
+        stateName: message.payload.stateName,
+        newValue: message.payload.newValue,
+        clientId: message.clientId
+      });
+      
+      return CommonAdapter.createSuccessResponse({
+        message: 'Device state message acknowledged',
+        topic: message.topic,
+        deviceUuid: message.payload.deviceUuid
+      });
+    } catch (error) {
+      logger.error(`Error handling device state: ${error.message}`);
+      return CommonAdapter.createErrorResponse(`Device state error: ${error.message}`, 'DEVICE_STATE_ERROR');
+    }
+  }
+  
+  /**
+   * Handle rule chain messages
+   * @param {Object} message - Message object
+   * @returns {Promise<Object>} Processing result
+   */
+  async handleRuleChain(message) {
+    try {
+      // Skip processing if this is from internal publisher to prevent feedback loops
+      if (message.clientId && message.clientId.startsWith('aemos-publisher-')) {
+        logger.info(`Skipping rule chain processing for internal publisher message from ${message.clientId}`);
+        return CommonAdapter.createSuccessResponse({
+          message: 'Internal publisher rule chain message acknowledged (no processing)',
+          topic: message.topic,
+          organizationId: message.payload.organizationId,
+          ruleChainId: message.payload.ruleChainId,
+          skipped: true
+        });
+      }
+
+      // For rule chain messages from external sources, log and acknowledge
+      logger.info(`Rule chain message received: ${message.topic}`, {
+        organizationId: message.payload.organizationId,
+        ruleChainId: message.payload.ruleChainId,
+        status: message.payload.status,
+        clientId: message.clientId
+      });
+      
+      return CommonAdapter.createSuccessResponse({
+        message: 'Rule chain message acknowledged',
+        topic: message.topic,
+        organizationId: message.payload.organizationId,
+        ruleChainId: message.payload.ruleChainId
+      });
+    } catch (error) {
+      logger.error(`Error handling rule chain: ${error.message}`);
+      return CommonAdapter.createErrorResponse(`Rule chain error: ${error.message}`, 'RULE_CHAIN_ERROR');
     }
   }
   
@@ -251,17 +352,26 @@ class MessageRouter {
         return null;
       }
       
-      // Find device token
+      // Find device token with sensor relationship
       const deviceToken = await DeviceToken.findOne({
         where: { 
           token: token,
-          deviceUuid: deviceUuid
+          status: 'active'
         },
-        include: ['Device']
+        include: [{ 
+          model: require('../models/Sensor'), 
+          attributes: ['id', 'uuid', 'name'] 
+        }]
       });
       
-      if (!deviceToken || !deviceToken.Device) {
+      if (!deviceToken || !deviceToken.Sensor) {
         logger.warn(`Invalid token for device ${deviceUuid}`);
+        return null;
+      }
+      
+      // Check if the sensor UUID matches the provided deviceUuid
+      if (deviceToken.Sensor.uuid !== deviceUuid) {
+        logger.warn(`Device UUID mismatch: expected ${deviceUuid}, got ${deviceToken.Sensor.uuid}`);
         return null;
       }
       
@@ -271,7 +381,11 @@ class MessageRouter {
         return null;
       }
       
-      return deviceToken.Device;
+      return {
+        sensorId: deviceToken.Sensor.id,
+        uuid: deviceToken.Sensor.uuid,
+        name: deviceToken.Sensor.name
+      };
     } catch (error) {
       logger.error(`Error authenticating device ${deviceUuid}: ${error.message}`);
       return null;

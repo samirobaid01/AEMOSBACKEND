@@ -282,11 +282,28 @@ class MQTTService {
    */
   handleSubscribe(client, packet) {
     try {
-      const { subscriptions } = packet;
+      // Handle different packet formats
+      let subscriptions = packet.subscriptions;
+      
+      // If packet.subscriptions doesn't exist, try packet.subs (alternative format)
+      if (!subscriptions && packet.subs) {
+        subscriptions = packet.subs;
+      }
+      
+      // If still no subscriptions, check if packet itself is an array
+      if (!subscriptions && Array.isArray(packet)) {
+        subscriptions = packet;
+      }
       
       // Ensure subscriptions is an array
       if (!subscriptions || !Array.isArray(subscriptions)) {
-        logger.warn(`Invalid subscriptions from ${client.id}:`, subscriptions);
+        // Log at debug level instead of warn since this might be normal for some clients
+        logger.debug(`No subscriptions or invalid format from ${client.id}:`, {
+          packetType: typeof packet,
+          hasSubscriptions: !!packet.subscriptions,
+          hasSubs: !!packet.subs,
+          isArray: Array.isArray(packet)
+        });
         return;
       }
       
@@ -322,12 +339,27 @@ class MQTTService {
    */
   handleUnsubscribe(client, packet) {
     try {
-      const { unsubscriptions } = packet;
+      // Handle different packet formats
+      let unsubscriptions = packet.unsubscriptions;
+      
+      // If packet.unsubscriptions doesn't exist, try packet.unsubs (alternative format)
+      if (!unsubscriptions && packet.unsubs) {
+        unsubscriptions = packet.unsubs;
+      }
+      
+      // If still no unsubscriptions, check if packet itself is an array
+      if (!unsubscriptions && Array.isArray(packet)) {
+        unsubscriptions = packet;
+      }
       
       logger.debug(`MQTT unsubscribe from ${client.id}:`, unsubscriptions);
       
-      // Accept unsubscriptions
-      client.unsuback({ messageId: packet.messageId });
+      // Accept unsubscriptions - check if client has unsuback method
+      if (client && typeof client.unsuback === 'function') {
+        client.unsuback({ messageId: packet.messageId });
+      } else {
+        logger.debug(`Client ${client.id} does not have unsuback method or is not available`);
+      }
       
     } catch (error) {
       logger.error(`Error handling MQTT unsubscribe: ${error.message}`);

@@ -139,24 +139,63 @@ class MessageRouter {
         return CommonAdapter.createErrorResponse('Device not found', 'DEVICE_NOT_FOUND');
       }
       
-      // Create mock request object for controller
-      const mockReq = {
-        body: message.payload,
-        sensorId: device.sensorId,
-        device: device,
-        deviceUuid: device.uuid
-      };
+      // Handle both single data stream and batch data stream formats
+      let dataStreams = [];
       
-      const mockRes = {
-        status: (code) => ({
-          json: (data) => ({ statusCode: code, data })
-        })
-      };
+      if (message.payload.dataStreams && Array.isArray(message.payload.dataStreams)) {
+        // Batch data stream format
+        dataStreams = message.payload.dataStreams;
+        logger.debug(`Processing batch data stream with ${dataStreams.length} items`);
+      } else if (message.payload.value && message.payload.telemetryDataId) {
+        // Single data stream format
+        dataStreams = [message.payload];
+        logger.debug(`Processing single data stream`);
+      } else {
+        logger.warn(`Invalid MQTT data stream message: missing required fields`, {
+          topic: message.topic,
+          payload: message.payload,
+          deviceUuid: device.uuid
+        });
+        return CommonAdapter.createErrorResponse('Invalid message payload: value and telemetryDataId are required, or dataStreams array', 'INVALID_PAYLOAD');
+      }
       
-      // Call data stream controller
-      const result = await dataStreamController.createDataStreamWithToken(mockReq, mockRes);
+      // Validate each data stream in the batch
+      for (const dataStream of dataStreams) {
+        if (!dataStream.value || !dataStream.telemetryDataId) {
+          logger.warn(`Invalid data stream in batch: missing required fields`, {
+            dataStream,
+            deviceUuid: device.uuid
+          });
+          return CommonAdapter.createErrorResponse('Invalid data stream: value and telemetryDataId are required', 'INVALID_DATA_STREAM');
+        }
+      }
       
-      return CommonAdapter.createSuccessResponse(result);
+      // Process each data stream
+      const results = [];
+      for (const dataStream of dataStreams) {
+        // Create mock request object for controller
+        const mockReq = {
+          body: dataStream,
+          sensorId: device.sensorId,
+          device: device,
+          deviceUuid: device.uuid
+        };
+        
+        const mockRes = {
+          status: (code) => ({
+            json: (data) => ({ statusCode: code, data })
+          })
+        };
+        
+        // Call data stream controller
+        const result = await dataStreamController.createDataStreamWithToken(mockReq, mockRes);
+        results.push(result);
+      }
+      
+      return CommonAdapter.createSuccessResponse({
+        message: `Processed ${dataStreams.length} data stream(s)`,
+        results: results
+      });
     } catch (error) {
       logger.error(`Error handling data stream: ${error.message}`);
       return CommonAdapter.createErrorResponse(`Data stream error: ${error.message}`, 'DATA_STREAM_ERROR');

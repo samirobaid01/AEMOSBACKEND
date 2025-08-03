@@ -232,9 +232,31 @@ const createDataStreamWithToken = async (req, res) => {
   try {
     const { value, telemetryDataId } = req.body;
     
+    // Validate required fields
+    if (!value) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Value is required'
+      });
+    }
+    
+    if (!telemetryDataId) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'telemetryDataId is required'
+      });
+    }
+    
     // The device auth middleware has already verified the token
     // and attached the sensor to the request
     const sensorId = req.sensorId;
+    
+    if (!sensorId) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Sensor ID is required'
+      });
+    }
     
     // Verify that the telemetry data belongs to the authenticated sensor
     const telemetryData = await TelemetryData.findOne({
@@ -298,7 +320,13 @@ const createDataStreamWithToken = async (req, res) => {
     });
     
   } catch (error) {
-    logger.error(`Error creating data stream with token: ${error.message}`);
+    logger.error(`Error creating data stream with token: ${error.message}`, {
+      error: error.message,
+      stack: error.stack,
+      body: req.body,
+      sensorId: req.sensorId,
+      deviceUuid: req.deviceUuid
+    });
     res.status(500).json({
       status: 'error',
       message: 'Failed to create data stream'

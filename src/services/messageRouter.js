@@ -44,6 +44,7 @@ class MessageRouter {
    */
   async route(message) {
     try {
+      console.log('message received from client', message);
       // Validate message
       const validation = CommonAdapter.validateMessage(message);
       if (!validation.isValid) {

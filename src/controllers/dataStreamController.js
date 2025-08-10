@@ -8,7 +8,7 @@ const logger = require('../utils/logger');
 const socketManager = require('../utils/socketManager');
 const {ruleChainService} = require('../services/ruleChainService');
 const mqttPublisher = require('../services/mqttPublisherService');
-
+const coapPublisher = require('../services/coapPublisherService');
 // Get all data streams
 const getAllDataStreams = async (req, res, next) => {
   try {
@@ -306,6 +306,13 @@ const createDataStreamWithToken = async (req, res) => {
         if (deviceUuid) {
           await mqttPublisher.publishDataStream(newDataStream, deviceUuid);
           logger.debug(`Data stream published to MQTT for device ${deviceUuid}`);
+          // Notify all observers (CoAP Observe subscribers)
+          await coapPublisher.notifyObservers(deviceUuid, {
+            event: 'state_change',
+            deviceUuid,
+            state: newDataStream,
+            timestamp: new Date().toISOString()
+          });
         }
       } catch (error) {
         logger.error(`Failed to publish data stream to MQTT: ${error.message}`);

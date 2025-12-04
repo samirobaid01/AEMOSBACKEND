@@ -4,6 +4,8 @@
   "description": "AEMOS Backend API",
   "main": "src/server.js",
   "scripts": {
+    "debug": "node --inspect src/server.js",
+    "starthttp": "node src/server.js",
     "start": "ENABLE_MQTT=true MQTT_TOKEN_AUTH=true ENABLE_COAP=true node src/server.js",
     "dev": "ENABLE_MQTT=true MQTT_TOKEN_AUTH=true ENABLE_COAP=true nodemon",
     "test": "jest --detectOpenHandles",

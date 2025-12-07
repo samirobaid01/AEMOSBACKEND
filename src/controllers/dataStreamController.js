@@ -300,27 +300,51 @@ const createDataStreamWithToken = async (req, res) => {
         config.broadcastAll
       );
 
-      // 🎯 Publish to MQTT as well
+      // 🎯 Publish to protocols based on origin protocol
       try {
         const deviceUuid = req.device?.uuid || req.deviceUuid;
+        const originProtocol = req.originProtocol || 'http'; // Default to http for HTTP routes
+        
         if (deviceUuid) {
-          await mqttPublisher.publishDataStream(newDataStream, deviceUuid);
-          logger.debug(`Data stream published to MQTT for device ${deviceUuid}`);
-          // Notify all observers (CoAP Observe subscribers)
-          await coapPublisher.notifyObservers(deviceUuid, {
+          const dataStreamNotification = {
             event: 'state_change',
             deviceUuid,
             state: newDataStream,
             timestamp: new Date().toISOString()
-          });
+          };
+          
+          // Conditionally publish based on origin protocol
+          if (originProtocol === 'mqtt') {
+            // For MQTT-originated requests, publish to MQTT only
+            await mqttPublisher.publishDataStream(newDataStream, deviceUuid);
+            logger.debug(`Data stream published to MQTT for device ${deviceUuid} (MQTT origin)`);
+          } else if (originProtocol === 'coap') {
+            // For CoAP-originated requests, notify CoAP observers only
+            await coapPublisher.notifyObservers(deviceUuid, dataStreamNotification);
+            logger.debug(`Data stream notified to CoAP observers for device ${deviceUuid} (CoAP origin)`);
+          } else {
+            // For HTTP or unknown protocols, publish to both MQTT and CoAP
+            // This allows HTTP-triggered data streams to notify all subscribers
+            await mqttPublisher.publishDataStream(newDataStream, deviceUuid);
+            await coapPublisher.notifyObservers(deviceUuid, dataStreamNotification);
+            logger.debug(`Data stream published to MQTT and CoAP for device ${deviceUuid} (${originProtocol} origin)`);
+          }
         }
       } catch (error) {
-        logger.error(`Failed to publish data stream to MQTT: ${error.message}`);
+        logger.error(`Failed to publish data stream: ${error.message}`);
       }
 
       // Trigger rule engine only if not skipped
       if (!skipRuleChainTrigger) {
-        ruleChainService.trigger();
+        // Get protocol context and organization ID from request
+        const originProtocol = req.originProtocol || 'http'; // Default to http for HTTP routes
+        const organizationId = req.organizationId || 1; // Default to 1 if not provided
+        
+        // Pass protocol context to rule chain service for conditional publishing
+        ruleChainService.trigger(organizationId, {
+          originProtocol,
+          deviceUuid: req.device?.uuid || req.deviceUuid
+        });
       } else {
         logger.info(`Skipping rule chain trigger for internal publisher data stream`);
       }

@@ -45,7 +45,6 @@ class MessageRouter {
    */
   async route(message) {
     try {
-      console.log('message received from client');
       // Validate message
       const validation = CommonAdapter.validateMessage(message);
       if (!validation.isValid) {
@@ -68,7 +67,6 @@ class MessageRouter {
       
       // Process message
       const result = await handler(transformedMessage);
-      console.log('result', result);
       
       // Log processing
       CommonAdapter.logMessageProcessing(transformedMessage, 'routed');
@@ -125,7 +123,6 @@ class MessageRouter {
    */
   async handleDataStream(message) {
     try {
-      console.log('inside handleDataStream', message);
       // Extract device UUID from message context (topic/path/metadata)
       const deviceUuid = this.extractDeviceUuid(message);
       if (!deviceUuid) {
@@ -187,15 +184,21 @@ class MessageRouter {
         }
       }
       
+      // Extract organization ID for rule chain triggering
+      const organizationId = this.extractOrganizationId(message) || message.payload?.organizationId || 1;
+      
       // Process each data stream
       const results = [];
       for (const dataStream of dataStreams) {
-        // Create mock request object for controller
+        // Create mock request object for controller with protocol context
         const mockReq = {
           body: dataStream,
           sensorId: device.sensorId,
           device: device,
-          deviceUuid: device.uuid
+          deviceUuid: device.uuid,
+          // Pass protocol context for conditional publishing
+          originProtocol: message.protocol || 'http', // Default to http for HTTP routes
+          organizationId: organizationId
         };
         
         const mockRes = {
@@ -277,13 +280,6 @@ class MessageRouter {
         });
       }
 
-      // For device state messages from external sources, log and acknowledge
-      logger.info(`Device state message received: ${message.topic}`, {
-        deviceUuid: message.payload.deviceUuid,
-        stateName: message.payload.stateName,
-        newValue: message.payload.newValue,
-        clientId: message.clientId
-      });
       
       return CommonAdapter.createSuccessResponse({
         message: 'Device state message acknowledged',
@@ -315,13 +311,7 @@ class MessageRouter {
         });
       }
 
-      // For rule chain messages from external sources, log and acknowledge
-      logger.info(`Rule chain message received: ${message.topic}`, {
-        organizationId: message.payload.organizationId,
-        ruleChainId: message.payload.ruleChainId,
-        status: message.payload.status,
-        clientId: message.clientId
-      });
+   
       
       return CommonAdapter.createSuccessResponse({
         message: 'Rule chain message acknowledged',

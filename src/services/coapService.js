@@ -115,7 +115,6 @@ class CoAPService {
         // Route into application logic (messageRouter should accept normalized messages)
         const result = await messageRouter.route(normalized); // adapt if your router API differs
 
-        // Optionally route may trigger publisher notifications itself.
         res.code = '2.04'; // Changed
         res.end(JSON.stringify({ ok: true, result }));
 

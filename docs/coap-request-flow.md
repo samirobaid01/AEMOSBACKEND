@@ -292,3 +292,4 @@ CoAP Client
 4. **Token Authentication**: Device authentication happens via token in payload, not HTTP headers
 5. **Device UUID Extraction**: For CoAP, device UUID is extracted from payload, not path (unlike MQTT which uses topic)
 
+

@@ -1,8 +1,18 @@
 /**
  * Global Jest setup - handles common mocks and cleanup
  */
+// -----------------------------
+// ENV DEFAULTS
+// -----------------------------
+process.env.NODE_ENV = 'test';
+process.env.NOTIFICATIONS_ENABLED = 'true';
+process.env.REDIS_HOST = process.env.REDIS_HOST || '127.0.0.1';
+process.env.REDIS_PORT = process.env.REDIS_PORT || '6379';
 
-// Store the original implementations to restore later
+// -----------------------------
+// STORE ORIGINAL IMPLEMENTATIONS
+// ----------------------------- 
+
 const originalSetInterval = global.setInterval;
 let cleanupFns = [];
 
@@ -49,7 +59,31 @@ jest.mock('../src/utils/notificationManager', () => {
   return mockManager;
 });
 
-// Clean up before each test
+// -----------------------------
+// AUTO-MOCK BullMQ
+// -----------------------------
+jest.mock('bullmq', () => {
+  const addMock = jest.fn();
+
+  return {
+    Queue: jest.fn().mockImplementation(() => ({
+      add: addMock
+    })),
+
+    Worker: jest.fn().mockImplementation((name, processor) => ({
+      name,
+      processor,
+      on: jest.fn()
+    })),
+
+    QueueEvents: jest.fn(),
+
+    __addMock: addMock
+  };
+});
+// -----------------------------
+// CLEAN UP BEFORE EACH TEST
+// -----------------------------
 beforeEach(() => {
   // Reset mocks
   jest.resetAllMocks();

@@ -5,7 +5,7 @@ module.exports = {
   coveragePathIgnorePatterns: ['/node_modules/', '/tests/'],
   testMatch: ['**/tests/**/*.test.js'],
   verbose: true,
-  forceExit: true,
+  forceExit: true, // Prevent hanging workers (important for BullMQ)
   clearMocks: true,
   resetMocks: true,
   restoreMocks: true,

@@ -933,11 +933,13 @@ class RuleChainService {
 
   /**
    * Triggers execution of all rule chains for an organization
-   * @param {number} ruleChainId - Optional specific rule chain ID, if null executes all org rules
    * @param {number} organizationId - Organization ID
+   * @param {Object} options - Optional configuration
+   * @param {string} options.originProtocol - Protocol that triggered this (mqtt, coap, http)
+   * @param {string} options.deviceUuid - Device UUID that triggered this (for CoAP notifications)
    * @returns {Promise} Results of rule chain executions
    */
-  async trigger(organizationId=1) {
+  async trigger(organizationId=1, options = {}) {
     try {
       // Find all applicable rule chains
       const whereClause = {
@@ -1072,17 +1074,59 @@ class RuleChainService {
         }
       }
 
-      // 🎯 Publish rule chain execution results to MQTT
+      // 🎯 Publish rule chain execution results based on origin protocol
+      const originProtocol = options.originProtocol || 'http';
+      const deviceUuid = options.deviceUuid;
+      
       process.nextTick(async () => {
         try {
-          await mqttPublisher.publishRuleChainResult({
+          const ruleChainResult = {
             organizationId,
             totalRuleChains: ruleChains.length,
             results,
-          }, organizationId);
-          logger.debug(`Rule chain execution results published to MQTT for organization ${organizationId}`);
+            timestamp: new Date().toISOString()
+          };
+          
+          // Conditionally publish based on origin protocol
+          if (originProtocol === 'mqtt') {
+            // Publish to MQTT for MQTT-originated requests
+            await mqttPublisher.publishRuleChainResult(ruleChainResult, organizationId);
+            logger.debug(`Rule chain execution results published to MQTT for organization ${organizationId}`);
+          } else if (originProtocol === 'coap' && deviceUuid) {
+            // Notify CoAP observers for CoAP-originated requests
+            const coapPublisher = require('./coapPublisherService');
+            await coapPublisher.notifyObservers(deviceUuid, {
+              event: 'rule_chain_result',
+              deviceUuid: deviceUuid,
+              organizationId: organizationId,
+              ruleChains: ruleChainResult,
+              timestamp: new Date().toISOString()
+            });
+            logger.debug(`Rule chain execution results notified to CoAP observers for device ${deviceUuid}`);
+          } else if (originProtocol === 'http') {
+            // For HTTP requests, publish to both MQTT and CoAP (if deviceUuid available)
+            // This allows HTTP-triggered rule chains to notify all subscribers
+            await mqttPublisher.publishRuleChainResult(ruleChainResult, organizationId);
+            logger.debug(`Rule chain execution results published to MQTT for organization ${organizationId} (HTTP trigger)`);
+            
+            if (deviceUuid) {
+              const coapPublisher = require('./coapPublisherService');
+              await coapPublisher.notifyObservers(deviceUuid, {
+                event: 'rule_chain_result',
+                deviceUuid: deviceUuid,
+                organizationId: organizationId,
+                ruleChains: ruleChainResult,
+                timestamp: new Date().toISOString()
+              });
+              logger.debug(`Rule chain execution results notified to CoAP observers for device ${deviceUuid} (HTTP trigger)`);
+            }
+          } else {
+            // Unknown protocol - default to MQTT
+            logger.warn(`Unknown origin protocol ${originProtocol}, defaulting to MQTT publish`);
+            await mqttPublisher.publishRuleChainResult(ruleChainResult, organizationId);
+          }
         } catch (error) {
-          logger.error(`Failed to publish rule chain results to MQTT: ${error.message}`);
+          logger.error(`Failed to publish rule chain results: ${error.message}`);
         }
       });
 

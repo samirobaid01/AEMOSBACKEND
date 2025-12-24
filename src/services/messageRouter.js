@@ -4,6 +4,7 @@
 const logger = require('../utils/logger');
 const CommonAdapter = require('../adapters/commonAdapter');
 const MQTTAdapter = require('../adapters/mqttAdapter');
+const CoapAdapter = require('../adapters/coapAdapter');
 const dataStreamController = require('../controllers/dataStreamController');
 const deviceController = require('../controllers/deviceController');
 const { DeviceToken } = require('../models/initModels');
@@ -83,6 +84,7 @@ class MessageRouter {
    * @returns {string} Message type
    */
   getMessageType(message) {
+    console.log('message protocol in getMessageType', message.protocol);
     if (message.protocol === 'mqtt') {
       return MQTTAdapter.getMessageType(message.topic);
     }
@@ -90,6 +92,18 @@ class MessageRouter {
     // For HTTP messages, determine type from path
     if (message.protocol === 'http') {
       const path = message.topic || message.path || '';
+      if (path.includes('/datastream')) {
+        return 'dataStream';
+      } else if (path.includes('/status')) {
+        return 'deviceStatus';
+      } else if (path.includes('/commands')) {
+        return 'commands';
+      }
+    }
+
+    // CoAP messages share the same REST-ish path scheme as HTTP
+    if (message.protocol === 'coap') {
+      const path = message.path || message.topic || '';
       if (path.includes('/datastream')) {
         return 'dataStream';
       } else if (path.includes('/status')) {
@@ -109,10 +123,10 @@ class MessageRouter {
    */
   async handleDataStream(message) {
     try {
-      // Extract device UUID from topic
-      const deviceUuid = MQTTAdapter.extractDeviceUuid(message.topic);
+      // Extract device UUID from message context (topic/path/metadata)
+      const deviceUuid = this.extractDeviceUuid(message);
       if (!deviceUuid) {
-        return CommonAdapter.createErrorResponse('Invalid device UUID in topic', 'INVALID_DEVICE_UUID');
+        return CommonAdapter.createErrorResponse('Invalid device identifier in message', 'INVALID_DEVICE_UUID');
       }
       
       // Check if this is from internal publisher (no authentication needed)
@@ -151,8 +165,8 @@ class MessageRouter {
         dataStreams = [message.payload];
         logger.debug(`Processing single data stream`);
       } else {
-        logger.warn(`Invalid MQTT data stream message: missing required fields`, {
-          topic: message.topic,
+        logger.warn(`Invalid data stream message: missing required fields`, {
+          topic: message.topic || message.path,
           payload: message.payload,
           deviceUuid: device.uuid
         });
@@ -170,15 +184,21 @@ class MessageRouter {
         }
       }
       
+      // Extract organization ID for rule chain triggering
+      const organizationId = this.extractOrganizationId(message) || message.payload?.organizationId || 1;
+      
       // Process each data stream
       const results = [];
       for (const dataStream of dataStreams) {
-        // Create mock request object for controller
+        // Create mock request object for controller with protocol context
         const mockReq = {
           body: dataStream,
           sensorId: device.sensorId,
           device: device,
-          deviceUuid: device.uuid
+          deviceUuid: device.uuid,
+          // Pass protocol context for conditional publishing
+          originProtocol: message.protocol || 'http', // Default to http for HTTP routes
+          organizationId: organizationId
         };
         
         const mockRes = {
@@ -209,9 +229,9 @@ class MessageRouter {
    */
   async handleDeviceStatus(message) {
     try {
-      const deviceUuid = MQTTAdapter.extractDeviceUuid(message.topic);
+      const deviceUuid = this.extractDeviceUuid(message);
       if (!deviceUuid) {
-        return CommonAdapter.createErrorResponse('Invalid device UUID in topic', 'INVALID_DEVICE_UUID');
+        return CommonAdapter.createErrorResponse('Invalid device identifier in message', 'INVALID_DEVICE_UUID');
       }
       
       // Authenticate device
@@ -260,13 +280,6 @@ class MessageRouter {
         });
       }
 
-      // For device state messages from external sources, log and acknowledge
-      logger.info(`Device state message received: ${message.topic}`, {
-        deviceUuid: message.payload.deviceUuid,
-        stateName: message.payload.stateName,
-        newValue: message.payload.newValue,
-        clientId: message.clientId
-      });
       
       return CommonAdapter.createSuccessResponse({
         message: 'Device state message acknowledged',
@@ -298,13 +311,7 @@ class MessageRouter {
         });
       }
 
-      // For rule chain messages from external sources, log and acknowledge
-      logger.info(`Rule chain message received: ${message.topic}`, {
-        organizationId: message.payload.organizationId,
-        ruleChainId: message.payload.ruleChainId,
-        status: message.payload.status,
-        clientId: message.clientId
-      });
+   
       
       return CommonAdapter.createSuccessResponse({
         message: 'Rule chain message acknowledged',
@@ -325,9 +332,9 @@ class MessageRouter {
    */
   async handleCommands(message) {
     try {
-      const deviceUuid = MQTTAdapter.extractDeviceUuid(message.topic);
+      const deviceUuid = this.extractDeviceUuid(message);
       if (!deviceUuid) {
-        return CommonAdapter.createErrorResponse('Invalid device UUID in topic', 'INVALID_DEVICE_UUID');
+        return CommonAdapter.createErrorResponse('Invalid device identifier in message', 'INVALID_DEVICE_UUID');
       }
       
       // Authenticate device
@@ -357,9 +364,9 @@ class MessageRouter {
    */
   async handleBroadcast(message) {
     try {
-      const organizationId = MQTTAdapter.extractOrganizationId(message.topic);
+      const organizationId = this.extractOrganizationId(message);
       if (!organizationId) {
-        return CommonAdapter.createErrorResponse('Invalid organization ID in topic', 'INVALID_ORG_ID');
+        return CommonAdapter.createErrorResponse('Invalid organization identifier in message', 'INVALID_ORG_ID');
       }
       
       // Process broadcast message
@@ -429,6 +436,50 @@ class MessageRouter {
       logger.error(`Error authenticating device ${deviceUuid}: ${error.message}`);
       return null;
     }
+  }
+
+  /**
+   * Extract device UUID across supported protocols
+   * @param {Object} message
+   * @returns {string|null}
+   */
+  extractDeviceUuid(message) {
+    if (message.deviceUuid) {
+      return message.deviceUuid;
+    }
+
+    if (message.payload && message.payload.deviceUuid) {
+      return message.payload.deviceUuid;
+    }
+
+    if (message.protocol === 'coap' || message.protocol === 'http') {
+      const path = message.path || message.topic || '';
+      return CoapAdapter.extractDeviceUuid(path, { query: message.query });
+    }
+
+    return MQTTAdapter.extractDeviceUuid(message.topic);
+  }
+
+  /**
+   * Extract organization ID across supported protocols
+   * @param {Object} message
+   * @returns {string|null}
+   */
+  extractOrganizationId(message) {
+    if (message.organizationId) {
+      return message.organizationId;
+    }
+
+    if (message.payload && message.payload.organizationId) {
+      return message.payload.organizationId;
+    }
+
+    if (message.protocol === 'coap' || message.protocol === 'http') {
+      const path = message.path || message.topic || '';
+      return CoapAdapter.extractOrganizationId(path, { query: message.query });
+    }
+
+    return MQTTAdapter.extractOrganizationId(message.topic);
   }
 }
 

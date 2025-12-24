@@ -228,13 +228,21 @@ class MQTTService {
     try {
       const { topic, payload, qos, retain } = packet;
       
-      logger.debug(`MQTT publish: ${topic} from ${client.id}`);
+      // Check if this is from internal publisher (system-generated messages)
+      const isInternalPublisher = client.id && client.id.startsWith('aemos-publisher-');
       
-      // Allow internal publisher to publish without authentication
-      if (client.id && client.id.startsWith('aemos-publisher-')) {
-        logger.debug(`Internal publisher ${client.id} publishing to ${topic}`);
-        // Skip authentication check for internal publisher
-      } else if (config.features.mqtt.authentication.enabled) {
+      if (isInternalPublisher) {
+        // Internal publisher messages are system-generated (e.g., rule chain results, notifications)
+        // These are echoes from our own publisher, so we skip processing to avoid feedback loops
+        logger.debug(`🔄 Internal MQTT publisher message (skipped): ${topic} from ${client.id}`);
+        return; // Skip processing internal publisher messages
+      }
+      
+      // External MQTT client message
+      logger.info(`📥 MQTT publish received: ${topic} from external client ${client.id}`);
+      
+      // Check authentication for external clients
+      if (config.features.mqtt.authentication.enabled) {
         const authInfo = this.authenticatedClients.get(client.id);
         if (!authInfo) {
           logger.warn(`Unauthenticated client ${client.id} attempted to publish to ${topic}`);
@@ -260,7 +268,7 @@ class MQTTService {
       
       // Log result
       if (result.status === 'success') {
-        logger.info(`Message processed: routed`, {
+        logger.info(`✅ MQTT message processed: ${topic} from ${client.id}`, {
           protocol: 'mqtt',
           topic: topic,
           source: client.id,

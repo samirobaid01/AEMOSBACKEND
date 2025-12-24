@@ -21,9 +21,9 @@ class CommonAdapter {
       errors.push('Protocol is required');
     }
     
-    if (!message.timestamp) {
-      errors.push('Timestamp is required');
-    }
+    // Timestamp is optional - can be in message.timestamp, message.receivedAt, 
+    // message.payload.timestamp, or will be set during transformation
+    // No validation error for missing timestamp
     
     if (!message.payload) {
       errors.push('Payload is required');
@@ -42,9 +42,21 @@ class CommonAdapter {
    */
   static transformMessage(message) {
     try {
+      // Determine timestamp from various sources (CoAP may have receivedAt or payload.timestamp)
+      let timestamp = message.timestamp;
+      if (!timestamp && message.receivedAt) {
+        timestamp = new Date(message.receivedAt);
+      }
+      if (!timestamp && message.payload && message.payload.timestamp) {
+        timestamp = new Date(message.payload.timestamp);
+      }
+      if (!timestamp) {
+        timestamp = new Date();
+      }
+      
       const transformed = {
         ...message,
-        timestamp: message.timestamp || new Date(),
+        timestamp: timestamp,
         processedAt: new Date()
       };
       
@@ -164,7 +176,7 @@ class CommonAdapter {
    * @param {string} action - Action performed
    */
   static logMessageProcessing(message, action) {
-    logger.info(`Message processed: ${action}`, {
+    logger.info(`Common Adapter: Message processed: ${action}`, {
       protocol: message.protocol,
       topic: message.topic,
       source: message.clientId || message.source,

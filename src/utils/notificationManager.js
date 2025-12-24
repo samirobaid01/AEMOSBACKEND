@@ -6,6 +6,7 @@ const socketManager = require('./socketManager');
 const logger = require('./logger');
 const config = require('../config');
 const mqttPublisher = require('../services/mqttPublisherService');
+const coapPublisher = require('../services/coapPublisherService');
 
 class NotificationManager {
   constructor(options = {}) {
@@ -257,6 +258,13 @@ class NotificationManager {
         try {
           await mqttPublisher.publishDeviceStateChange(metadata);
           logger.debug(`Device state change published to MQTT for device ${metadata.deviceUuid}`);
+          // Notify all observers (CoAP Observe subscribers)
+          await coapPublisher.notifyObservers(metadata.deviceUuid, {
+            event: 'state_change',
+            deviceUuid: metadata.deviceUuid,
+            state: notification,
+            timestamp: new Date().toISOString()
+          });
         } catch (error) {
           logger.error(`Failed to publish device state change to MQTT: ${error.message}`);
         }

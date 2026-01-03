@@ -3,7 +3,7 @@ const Joi = require('joi');
 // DataStream item schema (reusable)
 const dataStreamItemSchema = Joi.object({
   value: Joi.string().max(50).required(),
-  telemetryDataId: Joi.number().integer().required(),
+  variableName: Joi.string().max(50).required(),
   recievedAt: Joi.date().allow(null),
   urgent: Joi.boolean(),
   thresholds: Joi.object({

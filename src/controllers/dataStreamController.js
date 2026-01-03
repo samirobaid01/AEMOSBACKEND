@@ -230,20 +230,13 @@ const createBatchDataStreams = async (req, res, next) => {
 // Create a data stream entry with token authentication (lightweight auth for IoT devices)
 const createDataStreamWithToken = async (req, res) => {
   try {
-    const { value, telemetryDataId } = req.body;
+    const { value, telemetryDataId, variableName } = req.body;
     
     // Validate required fields
-    if (!value) {
+    if (!value || !variableName) {
       return res.status(400).json({
         status: 'error',
-        message: 'Value is required'
-      });
-    }
-    
-    if (!telemetryDataId) {
-      return res.status(400).json({
-        status: 'error',
-        message: 'telemetryDataId is required'
+        message: 'Value and variableName are required'
       });
     }
     
@@ -261,7 +254,7 @@ const createDataStreamWithToken = async (req, res) => {
     // Verify that the telemetry data belongs to the authenticated sensor
     const telemetryData = await TelemetryData.findOne({
       where: { 
-        id: telemetryDataId,
+        variableName: variableName,
         sensorId: sensorId
       }
     });
@@ -276,7 +269,7 @@ const createDataStreamWithToken = async (req, res) => {
     // Create the data stream
     const newDataStream = await DataStream.create({
       value,
-      telemetryDataId,
+      telemetryDataId : telemetryData.id,
       recievedAt: new Date()
     });
     

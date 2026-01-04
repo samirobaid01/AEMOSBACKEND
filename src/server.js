@@ -32,7 +32,7 @@ const startServer = async () => {
 
     // In development, you might want to sync the database, but be careful!
     // This should be disabled in production and replaced with proper migrations
-    if (config.server.nodeEnv === 'development') {
+    if (config.server.nodeEnv === 'developmennt') {
       // WARNING: Using { force: true } will drop tables and recreate them
       // await sequelize.sync({ force: true });
       // logger.info('Database synchronized (tables recreated)');

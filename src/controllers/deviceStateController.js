@@ -85,7 +85,7 @@ const getDeviceStateHistory = async (req, res, next) => {
     
     const states = await deviceStateService.getDeviceStateHistory(
       deviceId, 
-      limit ? parseInt(limit) : 100,
+      limit ? parseInt(limit) : 1000,
       startDate ? new Date(startDate) : null,
       endDate ? new Date(endDate) : null
     );

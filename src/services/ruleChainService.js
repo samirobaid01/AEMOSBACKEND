@@ -936,13 +936,11 @@ class RuleChainService {
 
   /**
    * Triggers execution of all rule chains for an organization
-   * @param {number} organizationId - Organization ID
-   * @param {Object} options - Optional configuration
    * @param {string} options.originProtocol - Protocol that triggered this (mqtt, coap, http)
    * @param {string} options.deviceUuid - Device UUID that triggered this (for CoAP notifications)
    * @returns {Promise} Results of rule chain executions
    */
-  async trigger(sensorUUID = null,options = {}, organizationId = 1) {
+  async trigger(sensorUUID = null) {
     try {
       // Find all applicable rule chains
       const ruleChains = await RuleChain.findAll({
@@ -1078,7 +1076,9 @@ class RuleChainService {
           // Continue with next rule chain
         }
       }
-
+      /*
+      //commented out for now to avoid duplicate publishing
+      
       // 🎯 Publish rule chain execution results based on origin protocol
       const originProtocol = options.originProtocol || 'http';
       const deviceUuid = options.deviceUuid;
@@ -1142,9 +1142,8 @@ class RuleChainService {
           logger.error(`Failed to publish rule chain results: ${error.message}`);
         }
       });
-
+      */
       return {
-        organizationId,
         totalRuleChains: ruleChains.length,
         results,
       };

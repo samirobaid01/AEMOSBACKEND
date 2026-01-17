@@ -350,10 +350,6 @@ const createDataStreamWithToken = async (req, res) => {
 
       // Trigger rule engine only if not skipped
       if (!skipRuleChainTrigger) {
-        // Get protocol context and organization ID from request
-        const originProtocol = req.originProtocol || 'http'; // Default to http for HTTP routes
-        const organizationId = req.organizationId || 1; // Default to 1 if not provided
-        
         // Pass protocol context to rule chain service for conditional publishing
         console.log("triggering rule chain for sensor ", sensorInstance.uuid);
         ruleChainService.trigger(

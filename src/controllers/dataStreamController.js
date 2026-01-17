@@ -9,6 +9,8 @@ const socketManager = require('../utils/socketManager');
 const {ruleChainService} = require('../services/ruleChainService');
 const mqttPublisher = require('../services/mqttPublisherService');
 const coapPublisher = require('../services/coapPublisherService');
+const RuleChainNode = require('../models/RuleChainNode');
+const Sensor = require('../models/Sensor');
 // Get all data streams
 const getAllDataStreams = async (req, res, next) => {
   try {
@@ -243,6 +245,8 @@ const createDataStreamWithToken = async (req, res) => {
     // The device auth middleware has already verified the token
     // and attached the sensor to the request
     const sensorId = req.sensorId;
+    const sensorInstance = await Sensor.findOne({where: {id: sensorId}});
+    console.log("the target sensor is ",sensorInstance.uuid);
     
     if (!sensorId) {
       return res.status(400).json({
@@ -279,7 +283,24 @@ const createDataStreamWithToken = async (req, res) => {
     });
     process.nextTick(async () => {
       // Check if rule chain triggering should be skipped (for internal publisher messages)
-      const skipRuleChainTrigger = req.body.skipRuleChainTrigger === true;
+      let skipRuleChainTrigger = req.body.skipRuleChainTrigger === true;
+      const ruleChainNodes= await RuleChainNode.findAll({where: {type: 'filter'}});
+      console.log("total rule chain nodes found are ", ruleChainNodes.length);
+
+      for (const ruleChianNodeInstance of ruleChainNodes) {
+        console.log("rule chain node instance config is ", ruleChianNodeInstance.config);
+        const config = ruleChianNodeInstance.config || '{}';
+        console.log("comparing following config uuid ", config.UUID, " with sensor uuid ", sensorInstance.uuid);
+        const result = config.UUID === sensorInstance.uuid;
+        console.log("result is ", result);
+        if (result) {
+          skipRuleChainTrigger = false;
+          console.log("Rule chain node instance found", ruleChianNodeInstance.name, ruleChianNodeInstance.ruleChainId);
+          break;
+        } else {
+          skipRuleChainTrigger = true;
+        }
+      }
       
       // Determine priority based on business rules
       // For example, if there's an 'urgent' flag or value exceeds thresholds
@@ -329,15 +350,11 @@ const createDataStreamWithToken = async (req, res) => {
 
       // Trigger rule engine only if not skipped
       if (!skipRuleChainTrigger) {
-        // Get protocol context and organization ID from request
-        const originProtocol = req.originProtocol || 'http'; // Default to http for HTTP routes
-        const organizationId = req.organizationId || 1; // Default to 1 if not provided
-        
         // Pass protocol context to rule chain service for conditional publishing
-        ruleChainService.trigger(organizationId, {
-          originProtocol,
-          deviceUuid: req.device?.uuid || req.deviceUuid
-        });
+        console.log("triggering rule chain for sensor ", sensorInstance.uuid);
+        ruleChainService.trigger(
+          sensorInstance.uuid
+        );
       } else {
         logger.info(`Skipping rule chain trigger for internal publisher data stream`);
       }

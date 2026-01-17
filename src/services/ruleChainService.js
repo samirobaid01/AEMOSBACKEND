@@ -38,12 +38,12 @@ const getRuleChainNodeForOwnershipCheck = async (id) => {
   try {
     // First check if the node exists
     const ruleChainNode = await RuleChainNode.findByPk(id);
-    
+
     if (!ruleChainNode) {
       console.log(`RuleChainNode with ID ${id} not found!`);
       return null;
     }
-    
+
     // Get organization by direct SQL for reliability
     const query = `
       SELECT rc.organizationId
@@ -52,33 +52,35 @@ const getRuleChainNodeForOwnershipCheck = async (id) => {
       WHERE rcn.id = ?
       LIMIT 1
     `;
-    
+
     const results = await sequelize.query(query, {
       replacements: [Number(id)],
-      type: sequelize.QueryTypes.SELECT
+      type: sequelize.QueryTypes.SELECT,
     });
-    
+
     let organizationId = null;
     if (results && results.length > 0 && results[0].organizationId) {
       organizationId = Number(results[0].organizationId);
       console.log(`Organization ID for rule chain node ${id}: ${organizationId}`);
-      
+
       return {
         id: ruleChainNode.id,
-        organizationId: organizationId
+        organizationId: organizationId,
       };
     }
-    
+
     // If no organization found, return node with null organizationId
-    console.warn(`RuleChainNode ${id} is not associated with any organization. No organization association found.`);
+    console.warn(
+      `RuleChainNode ${id} is not associated with any organization. No organization association found.`
+    );
     return {
       id: ruleChainNode.id,
-      organizationId: null
+      organizationId: null,
     };
-      } catch (error) {
-      logger.error('Error in getRuleChainNodeForOwnershipCheck:', error.message);
-      return null;
-    }
+  } catch (error) {
+    logger.error('Error in getRuleChainNodeForOwnershipCheck:', error.message);
+    return null;
+  }
 };
 
 /**
@@ -102,12 +104,12 @@ const ruleChainNodeBelongsToOrganization = async (nodeId, organizationId) => {
       JOIN RuleChain rc ON rcn.ruleChainId = rc.id
       WHERE rcn.id = ? AND rc.organizationId = ?
     `;
-    
+
     const results = await sequelize.query(query, {
       replacements: [Number(nodeId), Number(organizationId)],
-      type: sequelize.QueryTypes.SELECT
+      type: sequelize.QueryTypes.SELECT,
     });
-    
+
     return results[0].count > 0;
   } catch (error) {
     logger.error(`Error in ruleChainNodeBelongsToOrganization:`, error);
@@ -116,7 +118,8 @@ const ruleChainNodeBelongsToOrganization = async (nodeId, organizationId) => {
 };
 
 // Attach the cross-organization check function to make it available for checkResourceOwnership
-getRuleChainNodeForOwnershipCheck.resourceBelongsToOrganization = ruleChainNodeBelongsToOrganization;
+getRuleChainNodeForOwnershipCheck.resourceBelongsToOrganization =
+  ruleChainNodeBelongsToOrganization;
 
 class RuleChainService {
   // RuleChain operations
@@ -163,9 +166,9 @@ class RuleChainService {
                   WHEN type = 'action' THEN 3 
                   ELSE 4 
                 END`),
-                'ASC'
-              ]
-            ]
+                'ASC',
+              ],
+            ],
           },
         ],
       });
@@ -206,8 +209,8 @@ class RuleChainService {
       const existingNode = await RuleChainNode.findOne({
         where: {
           ruleChainId: data.ruleChainId,
-          name: data.name
-        }
+          name: data.name,
+        },
       });
 
       if (existingNode) {
@@ -233,7 +236,7 @@ class RuleChainService {
             as: 'nextNode',
           },
         ],
-        order: [['name', 'ASC']] // Order by name
+        order: [['name', 'ASC']], // Order by name
       });
       return nodes;
     } catch (error) {
@@ -270,8 +273,8 @@ class RuleChainService {
           where: {
             ruleChainId: node.ruleChainId,
             name: data.name,
-            id: { [Sequelize.Op.ne]: id } // Exclude current node
-          }
+            id: { [Sequelize.Op.ne]: id }, // Exclude current node
+          },
         });
 
         if (existingNode) {
@@ -329,12 +332,12 @@ class RuleChainService {
       // Start with first node
       let currentNode = ruleChain.nodes[0];
       const results = [];
-      
+
       // Initialize nodeResults for categorized access
       const nodeResults = {
         filters: [],
         transformations: [],
-        actions: []
+        actions: [],
       };
 
       let allFiltersPassed = true;
@@ -344,7 +347,7 @@ class RuleChainService {
       // Execute nodes sequentially
       while (currentNode) {
         const nodeType = currentNode.type;
-        const config = JSON.parse(currentNode.config || '{}');
+        const config = currentNode.config || '{}';
         let actionResult;
 
         switch (nodeType) {
@@ -357,14 +360,14 @@ class RuleChainService {
               config,
             };
             results.push(filterResult);
-            
+
             // Add to categorized results
             nodeResults.filters.push({
               nodeId: currentNode.id,
               passed: actionResult,
-              condition: config
+              condition: config,
             });
-            
+
             if (!actionResult) {
               allFiltersPassed = false;
               break;
@@ -380,12 +383,12 @@ class RuleChainService {
               config,
             };
             results.push(transformResult);
-            
+
             // Add to categorized results
             nodeResults.transformations.push({
               nodeId: currentNode.id,
               transformationType: config.type,
-              dataSnapshot: { ...data }
+              dataSnapshot: { ...data },
             });
             transformationsCount++;
             break;
@@ -399,7 +402,7 @@ class RuleChainService {
               config,
             };
             results.push(actionExecutionResult);
-            
+
             // Add to categorized results with enhanced device information
             nodeResults.actions.push({
               nodeId: currentNode.commandid,
@@ -407,11 +410,11 @@ class RuleChainService {
               SourceType: {
                 deviceUuid: config.command.deviceUuid,
                 value: config.command.value,
-                deviceType: config.type
+                deviceType: config.type,
               },
               command: config.command,
               timestamp: actionResult.timestamp,
-              notificationSent: false // Will be updated after notification is sent
+              notificationSent: false, // Will be updated after notification is sent
             });
             actionsExecuted++;
             break;
@@ -437,7 +440,7 @@ class RuleChainService {
         totalNodes: results.length,
         filtersPassed: allFiltersPassed,
         transformationsApplied: transformationsCount,
-        actionsExecuted: actionsExecuted
+        actionsExecuted: actionsExecuted,
       };
 
       // Return both new format and preserve original execution details
@@ -451,7 +454,7 @@ class RuleChainService {
           ruleChainId,
           executedNodes: results,
           finalData: data,
-        }
+        },
       };
     } catch (error) {
       throw error;
@@ -774,16 +777,16 @@ class RuleChainService {
         timestamp: new Date().toISOString(),
         deviceInfo: {
           uuid: config.command.deviceUuid,
-          type: config.type || 'unknown'
+          type: config.type || 'unknown',
         },
-        sensorData
+        sensorData,
       };
     } catch (error) {
       logger.error('Error in _performAction:', error);
       return {
         status: 'error',
         error: error.message,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       };
     }
   }
@@ -933,36 +936,33 @@ class RuleChainService {
 
   /**
    * Triggers execution of all rule chains for an organization
-   * @param {number} organizationId - Organization ID
-   * @param {Object} options - Optional configuration
    * @param {string} options.originProtocol - Protocol that triggered this (mqtt, coap, http)
    * @param {string} options.deviceUuid - Device UUID that triggered this (for CoAP notifications)
    * @returns {Promise} Results of rule chain executions
    */
-  async trigger(organizationId=1, options = {}) {
+  async trigger(sensorUUID = null) {
     try {
       // Find all applicable rule chains
-      const whereClause = {
-        organizationId,
-      };
-
-      if (organizationId) {
-        whereClause.organizationId = organizationId;
+      const ruleChains = await RuleChain.findAll({
+        include: [
+          {
+            model: RuleChainNode,
+            as: 'nodes',
+            required: true, // IMPORTANT: converts to INNER JOIN
+            where: Sequelize.where(
+              Sequelize.json('config.UUID'),
+              sensorUUID
+            ),
+          },
+        ],
+      });
+      
+      if (!ruleChains.length) {
+        console.log('No rule chains found for sensor UUID:', sensorUUID);
+        return;
       }
-
-        const ruleChains = await RuleChain.findAll({
-          where: whereClause,
-          include: [
-            {
-              model: RuleChainNode,
-              as: 'nodes',
-            },
-          ],
-        });
-
-        if (!ruleChains || ruleChains.length === 0) {
-          throw new Error(`No rule chains found for organization ${organizationId}`);
-        }
+      
+      console.log('Total rule chains to execute:', ruleChains.length);
 
       // Process each rule chain
       const results = [];
@@ -985,7 +985,7 @@ class RuleChainService {
 
           for (const node of ruleChain.nodes) {
             try {
-              const config = JSON.parse(node.config || '{}');
+              const config = node.config || '{}';
               this._extractRequirements(config, sensorReqs, deviceReqs);
             } catch (error) {
               logger.error(
@@ -1017,8 +1017,8 @@ class RuleChainService {
           });
           // trigger device state instance
           const deviceStateInstance = executionResult.nodeResults.actions;
-          if(deviceStateInstance){
-            for(const action of deviceStateInstance){
+          if (deviceStateInstance) {
+            for (const action of deviceStateInstance) {
               try {
                 // Transform action data to match required format
                 const stateChangeData = {
@@ -1029,35 +1029,38 @@ class RuleChainService {
                   metadata: {
                     ruleChainId: ruleChain.id,
                     ruleChainName: ruleChain.name,
-                    nodeId: action.nodeId
-                  }
+                    nodeId: action.nodeId,
+                  },
                 };
-                
+
                 // Call createInstance with the transformed data
                 const result = await deviceStateInstanceService.createInstance(stateChangeData);
-                
+
                 // Queue notification with the returned metadata
                 if (result.metadata) {
                   await notificationManager.queueStateChangeNotification(
                     {
                       ...result.metadata,
                       triggeredBy: 'rule_chain',
-                      ruleChainDetails: stateChangeData.metadata
+                      ruleChainDetails: stateChangeData.metadata,
                     },
-                    null,  // default priority
-                    true   // broadcast to all since it's system-initiated
+                    null, // default priority
+                    true // broadcast to all since it's system-initiated
                   );
-                  
+
                   // Update action with notification status
                   action.notificationSent = true;
                   action.notificationDetails = {
                     triggeredBy: 'rule_chain',
                     priority: 'normal',
-                    broadcast: true
+                    broadcast: true,
                   };
                 }
               } catch (error) {
-                logger.error(`Error processing device state change for action ${action.nodeId}:`, error);
+                logger.error(
+                  `Error processing device state change for action ${action.nodeId}:`,
+                  error
+                );
                 action.notificationSent = false;
                 action.error = error.message;
               }
@@ -1073,25 +1076,29 @@ class RuleChainService {
           // Continue with next rule chain
         }
       }
-
+      /*
+      //commented out for now to avoid duplicate publishing
+      
       // 🎯 Publish rule chain execution results based on origin protocol
       const originProtocol = options.originProtocol || 'http';
       const deviceUuid = options.deviceUuid;
-      
+
       process.nextTick(async () => {
         try {
           const ruleChainResult = {
             organizationId,
             totalRuleChains: ruleChains.length,
             results,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
           };
-          
+
           // Conditionally publish based on origin protocol
           if (originProtocol === 'mqtt') {
             // Publish to MQTT for MQTT-originated requests
             await mqttPublisher.publishRuleChainResult(ruleChainResult, organizationId);
-            logger.debug(`Rule chain execution results published to MQTT for organization ${organizationId}`);
+            logger.debug(
+              `Rule chain execution results published to MQTT for organization ${organizationId}`
+            );
           } else if (originProtocol === 'coap' && deviceUuid) {
             // Notify CoAP observers for CoAP-originated requests
             const coapPublisher = require('./coapPublisherService');
@@ -1100,15 +1107,19 @@ class RuleChainService {
               deviceUuid: deviceUuid,
               organizationId: organizationId,
               ruleChains: ruleChainResult,
-              timestamp: new Date().toISOString()
+              timestamp: new Date().toISOString(),
             });
-            logger.debug(`Rule chain execution results notified to CoAP observers for device ${deviceUuid}`);
+            logger.debug(
+              `Rule chain execution results notified to CoAP observers for device ${deviceUuid}`
+            );
           } else if (originProtocol === 'http') {
             // For HTTP requests, publish to both MQTT and CoAP (if deviceUuid available)
             // This allows HTTP-triggered rule chains to notify all subscribers
             await mqttPublisher.publishRuleChainResult(ruleChainResult, organizationId);
-            logger.debug(`Rule chain execution results published to MQTT for organization ${organizationId} (HTTP trigger)`);
-            
+            logger.debug(
+              `Rule chain execution results published to MQTT for organization ${organizationId} (HTTP trigger)`
+            );
+
             if (deviceUuid) {
               const coapPublisher = require('./coapPublisherService');
               await coapPublisher.notifyObservers(deviceUuid, {
@@ -1116,9 +1127,11 @@ class RuleChainService {
                 deviceUuid: deviceUuid,
                 organizationId: organizationId,
                 ruleChains: ruleChainResult,
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toISOString(),
               });
-              logger.debug(`Rule chain execution results notified to CoAP observers for device ${deviceUuid} (HTTP trigger)`);
+              logger.debug(
+                `Rule chain execution results notified to CoAP observers for device ${deviceUuid} (HTTP trigger)`
+              );
             }
           } else {
             // Unknown protocol - default to MQTT
@@ -1129,9 +1142,8 @@ class RuleChainService {
           logger.error(`Failed to publish rule chain results: ${error.message}`);
         }
       });
-
+      */
       return {
-        organizationId,
         totalRuleChains: ruleChains.length,
         results,
       };

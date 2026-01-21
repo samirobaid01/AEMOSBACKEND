@@ -8,6 +8,7 @@
     "starthttp": "node src/server.js",
     "start": "ENABLE_MQTT=true MQTT_TOKEN_AUTH=true ENABLE_COAP=true node src/server.js",
     "dev": "ENABLE_MQTT=true MQTT_TOKEN_AUTH=true ENABLE_COAP=true nodemon",
+    "worker": "node src/workers/startRuleEngineWorker.js",
     "test": "jest --detectOpenHandles",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
@@ -45,6 +46,7 @@
   "dependencies": {
     "aedes": "^0.51.3",
     "bcrypt": "^5.1.1",
+    "bullmq": "^5.10.4",
     "coap": "^1.4.2",
     "compression": "^1.8.0",
     "cors": "^2.8.5",
@@ -55,10 +57,12 @@
     "express-validator": "^7.0.1",
     "helmet": "^8.1.0",
     "hpp": "^0.2.3",
+    "ioredis": "^5.4.1",
     "joi": "^17.12.2",
     "jsonwebtoken": "^9.0.2",
     "mqtt": "^5.3.5",
     "mysql2": "^3.9.2",
+    "node-cron": "^3.0.3",
     "rate-limiter-flexible": "^7.1.0",
     "response-time": "^2.3.3",
     "sequelize": "^6.37.1",
@@ -76,6 +80,7 @@
     "nodemon": "^3.1.10",
     "prettier": "^3.2.5",
     "sinon": "^20.0.0",
+    "socket.io-client": "^4.8.1",
     "supertest": "^6.3.4"
   }
 }

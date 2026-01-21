@@ -56,6 +56,7 @@ const deviceAuth = async (req, res, next) => {
     req.sensor = tokenData.sensor;
     req.sensorId = tokenData.sensorId;
     req.deviceToken = tokenData.token;
+    req.deviceUuid = tokenData.sensor?.uuid;
     
     // Continue to the next middleware/controller
     next();

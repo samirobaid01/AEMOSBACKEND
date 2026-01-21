@@ -7,6 +7,7 @@ const logger = require('./logger');
 const config = require('../config');
 const mqttPublisher = require('../services/mqttPublisherService');
 const coapPublisher = require('../services/coapPublisherService');
+const notificationBridge = require('../services/notificationBridgeService');
 
 class NotificationManager {
   constructor(options = {}) {
@@ -229,28 +230,49 @@ class NotificationManager {
         priority = this.determineStatePriority(metadata) ? 'high' : 'normal';
       }
 
+      const normalizedNewValue = metadata.newValue !== undefined && metadata.newValue !== null
+        ? String(metadata.newValue)
+        : metadata.newValue;
+
+      const normalizedOldValue = metadata.oldValue !== undefined && metadata.oldValue !== null
+        ? String(metadata.oldValue)
+        : metadata.oldValue;
+
       const notification = {
-        title: `Device State Change: ${metadata.deviceName}`,
-        message: `State '${metadata.stateName}' changed from '${metadata.oldValue || 'undefined'}' to '${metadata.newValue}'`,
-        type: 'state_change',
+        title: 'Device State Changed',
+        message: `${metadata.stateName} changed to ${normalizedNewValue}`,
+        type: 'device-state-change',
         deviceType: metadata.deviceType,
         deviceId: metadata.deviceId,
         deviceUuid: metadata.deviceUuid,
         priority,
         timestamp: new Date(),
-        metadata
+        metadata: {
+          ...metadata,
+          oldValue: normalizedOldValue,
+          newValue: normalizedNewValue
+        }
       };
 
-      // Emit via WebSocket
-      if (broadcastAll) {
-        // Broadcast to all connected clients
-        socketManager.broadcastToAll('device-state-change', notification);
+      // Emit via WebSocket (or publish to bridge if in worker)
+      const socketIo = socketManager.getIo();
+      if (socketIo) {
+        // Main server - emit directly
+        if (broadcastAll) {
+          socketManager.broadcastToAll('device-state-change', notification);
+        } else {
+          socketManager.broadcastToRoom(`device-uuid-${metadata.deviceUuid}`, 'device-state-change', notification);
+          socketManager.broadcastToRoom(`device-${metadata.deviceId}`, 'device-state-change', notification);
+        }
       } else {
-        // Emit to specific device room using UUID
-        socketManager.broadcastToRoom(`device-uuid-${metadata.deviceUuid}`, 'device-state-change', notification);
-        
-        // Also emit to room with device ID for backward compatibility
-        socketManager.broadcastToRoom(`device-${metadata.deviceId}`, 'device-state-change', notification);
+        // Worker process - publish to Redis bridge
+        notificationBridge.publish({
+          type: 'socket',
+          event: 'device-state-change',
+          notification,
+          broadcastAll,
+          rooms: [`device-uuid-${metadata.deviceUuid}`, `device-${metadata.deviceId}`]
+        });
       }
 
       // 🎯 Publish to MQTT as well

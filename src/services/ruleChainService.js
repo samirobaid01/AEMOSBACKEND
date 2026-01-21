@@ -15,6 +15,7 @@ const mqttPublisher = require('./mqttPublisherService');
 const logger = require('../utils/logger');
 const sequelize = require('../config/database');
 const { Sequelize } = require('sequelize');
+const RuleChainIndex = require('../ruleEngine/indexing/RuleChainIndex');
 // Ownership check function for middleware
 const getRuleChainForOwnershipCheck = async (id) => {
   try {
@@ -942,25 +943,23 @@ class RuleChainService {
    */
   async trigger(sensorUUID = null) {
     try {
+      const ruleChainIds = await RuleChainIndex.getRuleChainsForSensor(sensorUUID);
+      if (!ruleChainIds.length) {
+        console.log('No rule chains found for sensor UUID:', sensorUUID);
+        return;
+      }
+
       // Find all applicable rule chains
       const ruleChains = await RuleChain.findAll({
+        where: { id: ruleChainIds },
         include: [
           {
             model: RuleChainNode,
             as: 'nodes',
-            required: true, // IMPORTANT: converts to INNER JOIN
-            where: Sequelize.where(
-              Sequelize.json('config.UUID'),
-              sensorUUID
-            ),
+            required: false
           },
         ],
       });
-      
-      if (!ruleChains.length) {
-        console.log('No rule chains found for sensor UUID:', sensorUUID);
-        return;
-      }
       
       console.log('Total rule chains to execute:', ruleChains.length);
 

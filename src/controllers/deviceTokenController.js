@@ -8,7 +8,7 @@ const createToken = async (req, res) => {
     
     const token = await deviceTokenService.createToken(sensorId, expiresAt);
     
-    res.status(201).json({
+    res.status(200).json({
       status: 'success',
       data: {
         id: token.id,

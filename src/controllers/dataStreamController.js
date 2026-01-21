@@ -6,10 +6,9 @@ const TelemetryData = require('../models/TelemetryData');
 const DataStream = require('../models/DataStream');
 const logger = require('../utils/logger');
 const socketManager = require('../utils/socketManager');
-const {ruleChainService} = require('../services/ruleChainService');
+const ruleEngineEventBus = require('../ruleEngine/core/RuleEngineEventBus');
 const mqttPublisher = require('../services/mqttPublisherService');
 const coapPublisher = require('../services/coapPublisherService');
-const RuleChainNode = require('../models/RuleChainNode');
 const Sensor = require('../models/Sensor');
 // Get all data streams
 const getAllDataStreams = async (req, res, next) => {
@@ -179,8 +178,50 @@ const createBatchDataStreams = async (req, res, next) => {
       return next(new ApiError(400, 'Invalid request: expected non-empty array of dataStreams'));
     }
 
+    const sensorId = req.sensorId;
+    if (!sensorId) {
+      return next(new ApiError(400, 'Sensor ID is required'));
+    }
+
+    // Resolve telemetryDataId for each variableName in the batch
+    const variableNames = Array.from(
+      new Set(
+        dataStreams
+          .map(item => item.variableName)
+          .filter(name => typeof name === 'string' && name.trim().length > 0)
+      )
+    );
+
+    const telemetryEntries = await TelemetryData.findAll({
+      where: {
+        sensorId,
+        variableName: variableNames
+      }
+    });
+
+    const telemetryByName = new Map(
+      telemetryEntries.map(entry => [entry.variableName, entry.id])
+    );
+
+    const now = new Date();
+    const preparedStreams = dataStreams.map(item => {
+      const telemetryDataId = item.telemetryDataId || telemetryByName.get(item.variableName);
+      if (!telemetryDataId) {
+        throw new ApiError(404, `Telemetry data not found for variableName '${item.variableName}'`);
+      }
+
+      const recievedAt = item.recievedAt ? new Date(item.recievedAt) : now;
+      const validRecievedAt = isNaN(recievedAt.getTime()) ? now : recievedAt;
+
+      return {
+        value: typeof item.value === 'string' ? item.value : String(item.value),
+        telemetryDataId,
+        recievedAt: validRecievedAt
+      };
+    });
+
     // Process batch operation
-    const createdStreams = await dataStreamService.createBatchDataStreams(dataStreams);
+    const createdStreams = await DataStream.bulkCreate(preparedStreams);
     
     // Send response immediately
     res.status(201).json({
@@ -191,8 +232,11 @@ const createBatchDataStreams = async (req, res, next) => {
       },
     });
 
-    // Process notifications asynchronously after response
-    process.nextTick(() => {
+    // Process notifications and rule engine asynchronously after response
+    process.nextTick(async () => {
+      const sensorInstance = await Sensor.findByPk(sensorId);
+      const sensorUUID = sensorInstance?.uuid;
+
       // Handle notifications in chunks to avoid blocking
       const processChunk = (items, index = 0, chunkSize = 20) => {
         const chunk = items.slice(index, index + chunkSize);
@@ -223,6 +267,17 @@ const createBatchDataStreams = async (req, res, next) => {
       
       // Start processing in chunks
       processChunk(createdStreams);
+
+      if (sensorUUID) {
+        createdStreams.forEach((dataStream) => {
+          ruleEngineEventBus.emit('telemetry-data', {
+            sensorUUID,
+            dataStreamId: dataStream.id,
+            telemetryDataId: dataStream.telemetryDataId,
+            recievedAt: dataStream.recievedAt
+          });
+        });
+      }
     });
   } catch (error) {
     next(error);
@@ -232,10 +287,10 @@ const createBatchDataStreams = async (req, res, next) => {
 // Create a data stream entry with token authentication (lightweight auth for IoT devices)
 const createDataStreamWithToken = async (req, res) => {
   try {
-    const { value, telemetryDataId, variableName } = req.body;
+    const { value, telemetryDataId, variableName, recievedAt } = req.body;
     
     // Validate required fields
-    if (!value || !variableName) {
+    if (value === undefined || value === null || !variableName) {
       return res.status(400).json({
         status: 'error',
         message: 'Value and variableName are required'
@@ -256,12 +311,24 @@ const createDataStreamWithToken = async (req, res) => {
     }
     
     // Verify that the telemetry data belongs to the authenticated sensor
-    const telemetryData = await TelemetryData.findOne({
-      where: { 
-        variableName: variableName,
-        sensorId: sensorId
-      }
-    });
+    let telemetryData = null;
+    if (telemetryDataId) {
+      telemetryData = await TelemetryData.findOne({
+        where: {
+          id: telemetryDataId,
+          sensorId: sensorId
+        }
+      });
+    }
+
+    if (!telemetryData) {
+      telemetryData = await TelemetryData.findOne({
+        where: { 
+          variableName: variableName,
+          sensorId: sensorId
+        }
+      });
+    }
     
     if (!telemetryData) {
       return res.status(404).json({
@@ -271,10 +338,13 @@ const createDataStreamWithToken = async (req, res) => {
     }
     
     // Create the data stream
+    const parsedRecievedAt = recievedAt ? new Date(recievedAt) : new Date();
+    const validRecievedAt = isNaN(parsedRecievedAt.getTime()) ? new Date() : parsedRecievedAt;
+
     const newDataStream = await DataStream.create({
-      value,
-      telemetryDataId : telemetryData.id,
-      recievedAt: new Date()
+      value: typeof value === 'string' ? value : String(value),
+      telemetryDataId: telemetryData.id,
+      recievedAt: validRecievedAt
     });
     
     res.status(201).json({
@@ -283,24 +353,7 @@ const createDataStreamWithToken = async (req, res) => {
     });
     process.nextTick(async () => {
       // Check if rule chain triggering should be skipped (for internal publisher messages)
-      let skipRuleChainTrigger = req.body.skipRuleChainTrigger === true;
-      const ruleChainNodes= await RuleChainNode.findAll({where: {type: 'filter'}});
-      console.log("total rule chain nodes found are ", ruleChainNodes.length);
-
-      for (const ruleChianNodeInstance of ruleChainNodes) {
-        console.log("rule chain node instance config is ", ruleChianNodeInstance.config);
-        const config = ruleChianNodeInstance.config || '{}';
-        console.log("comparing following config uuid ", config.UUID, " with sensor uuid ", sensorInstance.uuid);
-        const result = config.UUID === sensorInstance.uuid;
-        console.log("result is ", result);
-        if (result) {
-          skipRuleChainTrigger = false;
-          console.log("Rule chain node instance found", ruleChianNodeInstance.name, ruleChianNodeInstance.ruleChainId);
-          break;
-        } else {
-          skipRuleChainTrigger = true;
-        }
-      }
+      const skipRuleChainTrigger = req.body.skipRuleChainTrigger === true;
       
       // Determine priority based on business rules
       // For example, if there's an 'urgent' flag or value exceeds thresholds
@@ -350,13 +403,14 @@ const createDataStreamWithToken = async (req, res) => {
 
       // Trigger rule engine only if not skipped
       if (!skipRuleChainTrigger) {
-        // Pass protocol context to rule chain service for conditional publishing
-        console.log("triggering rule chain for sensor ", sensorInstance.uuid);
-        ruleChainService.trigger(
-          sensorInstance.uuid
-        );
+        await ruleEngineEventBus.emit('telemetry-data', {
+          sensorUUID: sensorInstance.uuid,
+          dataStreamId: newDataStream.id,
+          telemetryDataId: newDataStream.telemetryDataId,
+          recievedAt: newDataStream.recievedAt
+        });
       } else {
-        logger.info(`Skipping rule chain trigger for internal publisher data stream`);
+        logger.info('Skipping rule chain trigger for internal publisher data stream');
       }
     });
     

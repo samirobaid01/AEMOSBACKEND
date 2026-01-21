@@ -76,7 +76,7 @@ class CoAPPublisher {
    */
   async notifyObservers(deviceUuid, payload) {
     if (!this.observers) {
-      logger.warn('No observer registry available to notify observers');
+      logger.debug('No observer registry available to notify observers');
       return;
     }
 

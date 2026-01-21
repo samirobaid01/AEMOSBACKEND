@@ -7,6 +7,9 @@ const logger = require('./utils/logger');
 const socketManager = require('./utils/socketManager');
 const mqttService = require('./services/mqttService');
 const coapService = require('./services/coapService');
+const notificationBridge = require('./services/notificationBridgeService');
+const mqttPublisher = require('./services/mqttPublisherService');
+const coapPublisher = require('./services/coapPublisherService');
 
 // Set port from environment variables or default
 const PORT = config.server.port;
@@ -48,6 +51,25 @@ const startServer = async () => {
     if (config.features.socketio && config.features.socketio.enabled) {
       socketManager.initialize(server);
       logger.info('Socket.io server initialized');
+      
+      // Initialize notification bridge subscriber to handle worker notifications
+      notificationBridge.initializeSubscriber((notification) => {
+        if (notification.type === 'socket') {
+          const { event, notification: data, broadcastAll, rooms } = notification;
+          
+          if (broadcastAll) {
+            socketManager.broadcastToAll(event, data);
+          } else if (rooms && rooms.length > 0) {
+            rooms.forEach(room => {
+              socketManager.broadcastToRoom(room, event, data);
+            });
+          }
+          
+          logger.debug(`Emitted socket event '${event}' from worker notification`);
+        }
+      });
+      
+      logger.info('Notification bridge subscriber initialized');
     }
 
     // Initialize MQTT server if enabled in features

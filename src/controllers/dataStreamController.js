@@ -403,12 +403,21 @@ const createDataStreamWithToken = async (req, res) => {
 
       // Trigger rule engine only if not skipped
       if (!skipRuleChainTrigger) {
-        await ruleEngineEventBus.emit('telemetry-data', {
+        const emitResult = await ruleEngineEventBus.emit('telemetry-data', {
           sensorUUID: sensorInstance.uuid,
           dataStreamId: newDataStream.id,
           telemetryDataId: newDataStream.telemetryDataId,
           recievedAt: newDataStream.recievedAt
         });
+
+        if (emitResult && emitResult.rejected) {
+          logger.warn('Rule engine event rejected due to backpressure', {
+            sensorUUID: sensorInstance.uuid,
+            dataStreamId: newDataStream.id,
+            reason: emitResult.reason,
+            queueDepth: emitResult.queueDepth
+          });
+        }
       } else {
         logger.info('Skipping rule chain trigger for internal publisher data stream');
       }

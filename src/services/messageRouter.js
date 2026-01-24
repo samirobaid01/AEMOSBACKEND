@@ -160,7 +160,7 @@ class MessageRouter {
         // Batch data stream format
         dataStreams = message.payload.dataStreams;
         logger.debug(`Processing batch data stream with ${dataStreams.length} items`);
-      } else if (message.payload.value && message.payload.telemetryDataId) {
+      } else if (message.payload.value && (message.payload.telemetryDataId || message.payload.variableName)) {
         // Single data stream format
         dataStreams = [message.payload];
         logger.debug(`Processing single data stream`);
@@ -170,17 +170,17 @@ class MessageRouter {
           payload: message.payload,
           deviceUuid: device.uuid
         });
-        return CommonAdapter.createErrorResponse('Invalid message payload: value and telemetryDataId are required, or dataStreams array', 'INVALID_PAYLOAD');
+        return CommonAdapter.createErrorResponse('Invalid message payload: value and variableName or telemetryDataId are required, or dataStreams array', 'INVALID_PAYLOAD');
       }
       
       // Validate each data stream in the batch
       for (const dataStream of dataStreams) {
-        if (!dataStream.value || !dataStream.telemetryDataId) {
+        if (!dataStream.value || (!dataStream.telemetryDataId && !dataStream.variableName)) {
           logger.warn(`Invalid data stream in batch: missing required fields`, {
             dataStream,
             deviceUuid: device.uuid
           });
-          return CommonAdapter.createErrorResponse('Invalid data stream: value and telemetryDataId are required', 'INVALID_DATA_STREAM');
+          return CommonAdapter.createErrorResponse('Invalid data stream: value and variableName or telemetryDataId are required', 'INVALID_DATA_STREAM');
         }
       }
       

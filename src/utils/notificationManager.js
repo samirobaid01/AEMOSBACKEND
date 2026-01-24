@@ -7,6 +7,7 @@ const logger = require('./logger');
 const config = require('../config');
 const mqttPublisher = require('../services/mqttPublisherService');
 const coapPublisher = require('../services/coapPublisherService');
+const notificationBridge = require('../services/notificationBridgeService');
 
 class NotificationManager {
   constructor(options = {}) {
@@ -229,46 +230,72 @@ class NotificationManager {
         priority = this.determineStatePriority(metadata) ? 'high' : 'normal';
       }
 
+      const normalizedNewValue = metadata.newValue !== undefined && metadata.newValue !== null
+        ? String(metadata.newValue)
+        : metadata.newValue;
+
+      const normalizedOldValue = metadata.oldValue !== undefined && metadata.oldValue !== null
+        ? String(metadata.oldValue)
+        : metadata.oldValue;
+
       const notification = {
-        title: `Device State Change: ${metadata.deviceName}`,
-        message: `State '${metadata.stateName}' changed from '${metadata.oldValue || 'undefined'}' to '${metadata.newValue}'`,
-        type: 'state_change',
+        title: 'Device State Changed',
+        message: `${metadata.stateName} changed to ${normalizedNewValue}`,
+        type: 'device-state-change',
         deviceType: metadata.deviceType,
         deviceId: metadata.deviceId,
         deviceUuid: metadata.deviceUuid,
         priority,
         timestamp: new Date(),
-        metadata
+        metadata: {
+          ...metadata,
+          oldValue: normalizedOldValue,
+          newValue: normalizedNewValue
+        }
       };
 
-      // Emit via WebSocket
-      if (broadcastAll) {
-        // Broadcast to all connected clients
-        socketManager.broadcastToAll('device-state-change', notification);
-      } else {
-        // Emit to specific device room using UUID
-        socketManager.broadcastToRoom(`device-uuid-${metadata.deviceUuid}`, 'device-state-change', notification);
-        
-        // Also emit to room with device ID for backward compatibility
-        socketManager.broadcastToRoom(`device-${metadata.deviceId}`, 'device-state-change', notification);
-      }
-
-      // 🎯 Publish to MQTT as well
-      process.nextTick(async () => {
-        try {
-          await mqttPublisher.publishDeviceStateChange(metadata);
-          logger.debug(`Device state change published to MQTT for device ${metadata.deviceUuid}`);
-          // Notify all observers (CoAP Observe subscribers)
-          await coapPublisher.notifyObservers(metadata.deviceUuid, {
-            event: 'state_change',
-            deviceUuid: metadata.deviceUuid,
-            state: notification,
-            timestamp: new Date().toISOString()
-          });
-        } catch (error) {
-          logger.error(`Failed to publish device state change to MQTT: ${error.message}`);
+      const socketIo = socketManager.getIo();
+      if (socketIo) {
+        if (broadcastAll) {
+          socketManager.broadcastToAll('device-state-change', notification);
+        } else {
+          socketManager.broadcastToRoom(`device-uuid-${metadata.deviceUuid}`, 'device-state-change', notification);
+          socketManager.broadcastToRoom(`device-${metadata.deviceId}`, 'device-state-change', notification);
         }
-      });
+
+        process.nextTick(async () => {
+          try {
+            await mqttPublisher.publishDeviceStateChange(metadata);
+            logger.debug(`Device state change published to MQTT for device ${metadata.deviceUuid}`);
+            
+            await coapPublisher.notifyObservers(metadata.deviceUuid, {
+              event: 'state_change',
+              deviceUuid: metadata.deviceUuid,
+              state: notification,
+              timestamp: new Date().toISOString()
+            });
+          } catch (error) {
+            logger.error(`Failed to publish device state change to MQTT/CoAP: ${error.message}`);
+          }
+        });
+      } else {
+        notificationBridge.publish({
+          type: 'multi-protocol',
+          protocols: ['socket', 'mqtt', 'coap'],
+          event: 'device-state-change',
+          notification,
+          broadcastAll,
+          rooms: [`device-uuid-${metadata.deviceUuid}`, `device-${metadata.deviceId}`],
+          metadata: {
+            deviceUuid: metadata.deviceUuid,
+            deviceId: metadata.deviceId,
+            stateName: metadata.stateName,
+            oldValue: normalizedOldValue,
+            newValue: normalizedNewValue,
+            deviceType: metadata.deviceType
+          }
+        });
+      }
 
       // Log high priority notifications
       if (priority === 'high') {

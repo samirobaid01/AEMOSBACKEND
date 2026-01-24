@@ -7,6 +7,9 @@ const logger = require('./utils/logger');
 const socketManager = require('./utils/socketManager');
 const mqttService = require('./services/mqttService');
 const coapService = require('./services/coapService');
+const notificationBridge = require('./services/notificationBridgeService');
+const mqttPublisher = require('./services/mqttPublisherService');
+const coapPublisher = require('./services/coapPublisherService');
 
 // Set port from environment variables or default
 const PORT = config.server.port;
@@ -48,6 +51,55 @@ const startServer = async () => {
     if (config.features.socketio && config.features.socketio.enabled) {
       socketManager.initialize(server);
       logger.info('Socket.io server initialized');
+      
+      notificationBridge.initializeSubscriber(async (notification) => {
+        const protocols = notification.protocols || ['socket'];
+        
+        if (protocols.includes('socket')) {
+          const { event, notification: data, broadcastAll, rooms } = notification;
+          
+          if (broadcastAll) {
+            socketManager.broadcastToAll(event, data);
+          } else if (rooms && rooms.length > 0) {
+            rooms.forEach(room => {
+              socketManager.broadcastToRoom(room, event, data);
+            });
+          }
+          
+          logger.debug(`Emitted socket event '${event}' from worker notification`);
+        }
+
+        if (protocols.includes('mqtt') && config.features.mqtt && config.features.mqtt.enabled) {
+          try {
+            const { metadata } = notification;
+            if (metadata) {
+              await mqttPublisher.publishDeviceStateChange(metadata);
+              logger.debug(`Published MQTT notification for device ${metadata.deviceUuid} from worker`);
+            }
+          } catch (error) {
+            logger.error(`Failed to publish MQTT from worker notification: ${error.message}`);
+          }
+        }
+
+        if (protocols.includes('coap') && config.features.coap && config.features.coap.enabled) {
+          try {
+            const { metadata, notification: data } = notification;
+            if (metadata) {
+              await coapPublisher.notifyObservers(metadata.deviceUuid, {
+                event: 'state_change',
+                deviceUuid: metadata.deviceUuid,
+                state: data,
+                timestamp: new Date().toISOString()
+              });
+              logger.debug(`Notified CoAP observers for device ${metadata.deviceUuid} from worker`);
+            }
+          } catch (error) {
+            logger.error(`Failed to notify CoAP from worker notification: ${error.message}`);
+          }
+        }
+      });
+      
+      logger.info('Multi-protocol notification bridge subscriber initialized');
     }
 
     // Initialize MQTT server if enabled in features

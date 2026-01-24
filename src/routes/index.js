@@ -14,6 +14,8 @@ const permissionRoutes = require('./permissionRoutes');
 const userRoleRoutes = require('./userRoleRoutes');
 const reportRoutes = require('./reportRoutes');
 const ruleChainRoutes = require('./ruleChainRoutes');
+const metricsRoutes = require('./metricsRoutes');
+const healthRoutes = require('./healthRoutes');
 const sequelize = require('../config/database');
 
 const router = express.Router();
@@ -34,36 +36,8 @@ const localhostOnly = (req, res, next) => {
   });
 };
 
-// Basic health check route
-router.get('/health', async (req, res) => {
-  const checks = {
-    status: 'ok',
-    timestamp: new Date(),
-    services: {
-      database: { status: 'checking' }
-    }
-  };
-  
-  try {
-    await sequelize.authenticate();
-    checks.services.database.status = 'ok';
-  } catch (error) {
-    checks.services.database.status = 'error';
-    checks.services.database.message = error.message;
-    checks.status = 'error';
-  }
-  
-  const statusCode = checks.status === 'ok' ? 200 : 500;
-  res.status(statusCode).json(checks);
-});
-
-router.get('/health/ready', (req, res) => {
-  res.status(200).json({ status: 'ready' });
-});
-
-router.get('/health/live', (req, res) => {
-  res.status(200).json({ status: 'alive' });
-});
+router.use('/health', healthRoutes);
+router.use('/metrics', metricsRoutes);
 
 // Insomnia export endpoint - localhost only
 router.get('/insomnia', localhostOnly, (req, res) => {

@@ -56,7 +56,7 @@ function initialize(server) {
  */
 function broadcastToAll(event, data) {
   if (!io) {
-    logger.error('Socket.io not initialized');
+    logger.debug('Socket.io not initialized');
     return false;
   }
   
@@ -73,7 +73,7 @@ function broadcastToAll(event, data) {
  */
 function broadcastToRoom(room, event, data) {
   if (!io) {
-    logger.error('Socket.io not initialized');
+    logger.debug('Socket.io not initialized');
     return false;
   }
   
@@ -90,7 +90,7 @@ function broadcastToRoom(room, event, data) {
  */
 function sendToClient(socketId, event, data) {
   if (!io) {
-    logger.error('Socket.io not initialized');
+    logger.debug('Socket.io not initialized');
     return false;
   }
   

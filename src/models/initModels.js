@@ -20,6 +20,7 @@ const DataStream = require('./DataStream');
 const DeviceToken = require('./DeviceToken');
 const DeviceState = require('./DeviceState');
 const DeviceStateInstance = require('./DeviceStateInstance');
+const IndexManager = require('../ruleEngine/indexing/IndexManager');
 
 // Define all the associations
 const initAssociations = () => {
@@ -116,6 +117,12 @@ const initAssociations = () => {
 const initModels = async () => {
   try {
     initAssociations();
+    RuleChain.addHook('afterCreate', (ruleChain) => IndexManager.rebuildIndexForRuleChain(ruleChain.id));
+    RuleChain.addHook('afterUpdate', (ruleChain) => IndexManager.rebuildIndexForRuleChain(ruleChain.id));
+    RuleChain.addHook('afterDestroy', (ruleChain) => IndexManager.rebuildIndexForRuleChain(ruleChain.id));
+    RuleChainNode.addHook('afterCreate', (node) => IndexManager.rebuildIndexForRuleChain(node.ruleChainId));
+    RuleChainNode.addHook('afterUpdate', (node) => IndexManager.rebuildIndexForRuleChain(node.ruleChainId));
+    RuleChainNode.addHook('afterDestroy', (node) => IndexManager.rebuildIndexForRuleChain(node.ruleChainId));
     console.log('Models initialized successfully');
   } catch (error) {
     console.error('Error initializing models:', error);

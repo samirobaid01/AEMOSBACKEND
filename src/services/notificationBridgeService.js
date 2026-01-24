@@ -1,10 +1,3 @@
-/**
- * Notification Bridge Service
- * 
- * Bridges notifications between worker processes and the main server via Redis pub/sub.
- * Workers publish notifications, main server subscribes and emits via Socket.IO/MQTT/CoAP.
- */
-
 const Redis = require('ioredis');
 const logger = require('../utils/logger');
 
@@ -96,10 +89,6 @@ class NotificationBridgeService {
     }
   }
 
-  /**
-   * Publish a notification (called from worker)
-   * @param {Object} notification - Notification payload
-   */
   async publish(notification) {
     if (!this.publisher || !this.isPublisher) {
       logger.debug('Notification publisher not initialized, skipping publish');
@@ -107,12 +96,32 @@ class NotificationBridgeService {
     }
 
     try {
-      const message = JSON.stringify(notification);
+      const enrichedNotification = {
+        ...notification,
+        protocols: notification.protocols || this.inferProtocols(notification.type),
+        publishedAt: new Date().toISOString()
+      };
+
+      const message = JSON.stringify(enrichedNotification);
       await this.publisher.publish(NOTIFICATION_CHANNEL, message);
-      logger.debug('Published notification to Redis');
+      logger.debug('Published multi-protocol notification to Redis', {
+        type: enrichedNotification.type,
+        protocols: enrichedNotification.protocols
+      });
     } catch (error) {
       logger.error('Error publishing notification:', error);
     }
+  }
+
+  inferProtocols(notificationType) {
+    const protocolMap = {
+      'socket': ['socket'],
+      'mqtt': ['mqtt'],
+      'coap': ['coap'],
+      'multi-protocol': ['socket', 'mqtt', 'coap']
+    };
+
+    return protocolMap[notificationType] || ['socket', 'mqtt', 'coap'];
   }
 
   /**

@@ -52,9 +52,10 @@ const startServer = async () => {
       socketManager.initialize(server);
       logger.info('Socket.io server initialized');
       
-      // Initialize notification bridge subscriber to handle worker notifications
-      notificationBridge.initializeSubscriber((notification) => {
-        if (notification.type === 'socket') {
+      notificationBridge.initializeSubscriber(async (notification) => {
+        const protocols = notification.protocols || ['socket'];
+        
+        if (protocols.includes('socket')) {
           const { event, notification: data, broadcastAll, rooms } = notification;
           
           if (broadcastAll) {
@@ -67,9 +68,38 @@ const startServer = async () => {
           
           logger.debug(`Emitted socket event '${event}' from worker notification`);
         }
+
+        if (protocols.includes('mqtt') && config.features.mqtt && config.features.mqtt.enabled) {
+          try {
+            const { metadata } = notification;
+            if (metadata) {
+              await mqttPublisher.publishDeviceStateChange(metadata);
+              logger.debug(`Published MQTT notification for device ${metadata.deviceUuid} from worker`);
+            }
+          } catch (error) {
+            logger.error(`Failed to publish MQTT from worker notification: ${error.message}`);
+          }
+        }
+
+        if (protocols.includes('coap') && config.features.coap && config.features.coap.enabled) {
+          try {
+            const { metadata, notification: data } = notification;
+            if (metadata) {
+              await coapPublisher.notifyObservers(metadata.deviceUuid, {
+                event: 'state_change',
+                deviceUuid: metadata.deviceUuid,
+                state: data,
+                timestamp: new Date().toISOString()
+              });
+              logger.debug(`Notified CoAP observers for device ${metadata.deviceUuid} from worker`);
+            }
+          } catch (error) {
+            logger.error(`Failed to notify CoAP from worker notification: ${error.message}`);
+          }
+        }
       });
       
-      logger.info('Notification bridge subscriber initialized');
+      logger.info('Multi-protocol notification bridge subscriber initialized');
     }
 
     // Initialize MQTT server if enabled in features

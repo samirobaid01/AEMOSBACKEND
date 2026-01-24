@@ -254,43 +254,48 @@ class NotificationManager {
         }
       };
 
-      // Emit via WebSocket (or publish to bridge if in worker)
       const socketIo = socketManager.getIo();
       if (socketIo) {
-        // Main server - emit directly
         if (broadcastAll) {
           socketManager.broadcastToAll('device-state-change', notification);
         } else {
           socketManager.broadcastToRoom(`device-uuid-${metadata.deviceUuid}`, 'device-state-change', notification);
           socketManager.broadcastToRoom(`device-${metadata.deviceId}`, 'device-state-change', notification);
         }
+
+        process.nextTick(async () => {
+          try {
+            await mqttPublisher.publishDeviceStateChange(metadata);
+            logger.debug(`Device state change published to MQTT for device ${metadata.deviceUuid}`);
+            
+            await coapPublisher.notifyObservers(metadata.deviceUuid, {
+              event: 'state_change',
+              deviceUuid: metadata.deviceUuid,
+              state: notification,
+              timestamp: new Date().toISOString()
+            });
+          } catch (error) {
+            logger.error(`Failed to publish device state change to MQTT/CoAP: ${error.message}`);
+          }
+        });
       } else {
-        // Worker process - publish to Redis bridge
         notificationBridge.publish({
-          type: 'socket',
+          type: 'multi-protocol',
+          protocols: ['socket', 'mqtt', 'coap'],
           event: 'device-state-change',
           notification,
           broadcastAll,
-          rooms: [`device-uuid-${metadata.deviceUuid}`, `device-${metadata.deviceId}`]
+          rooms: [`device-uuid-${metadata.deviceUuid}`, `device-${metadata.deviceId}`],
+          metadata: {
+            deviceUuid: metadata.deviceUuid,
+            deviceId: metadata.deviceId,
+            stateName: metadata.stateName,
+            oldValue: normalizedOldValue,
+            newValue: normalizedNewValue,
+            deviceType: metadata.deviceType
+          }
         });
       }
-
-      // 🎯 Publish to MQTT as well
-      process.nextTick(async () => {
-        try {
-          await mqttPublisher.publishDeviceStateChange(metadata);
-          logger.debug(`Device state change published to MQTT for device ${metadata.deviceUuid}`);
-          // Notify all observers (CoAP Observe subscribers)
-          await coapPublisher.notifyObservers(metadata.deviceUuid, {
-            event: 'state_change',
-            deviceUuid: metadata.deviceUuid,
-            state: notification,
-            timestamp: new Date().toISOString()
-          });
-        } catch (error) {
-          logger.error(`Failed to publish device state change to MQTT: ${error.message}`);
-        }
-      });
 
       // Log high priority notifications
       if (priority === 'high') {

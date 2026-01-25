@@ -11,9 +11,6 @@ class NotificationBridgeService {
     this.isSubscriber = false;
   }
 
-  /**
-   * Initialize as publisher (for worker processes)
-   */
   initializePublisher() {
     if (this.publisher) {
       logger.warn('Notification publisher already initialized');
@@ -21,29 +18,38 @@ class NotificationBridgeService {
     }
 
     try {
+      const nodeEnv = process.env.NODE_ENV || 'development';
+      const redisPassword = process.env.REDIS_PASSWORD;
+      
+      if (nodeEnv === 'production' && !redisPassword) {
+        throw new Error('REDIS_PASSWORD required for notification bridge in production');
+      }
+
       this.publisher = new Redis({
         host: process.env.REDIS_HOST || '127.0.0.1',
         port: process.env.REDIS_PORT || 6379,
-        password: process.env.REDIS_PASSWORD || undefined,
+        password: redisPassword || undefined,
+        username: process.env.REDIS_USERNAME || undefined,
         lazyConnect: false,
         retryStrategy: (times) => Math.min(times * 50, 2000)
       });
 
       this.publisher.on('error', (err) => {
-        logger.error('Notification publisher error:', err);
+        if (err.message.includes('NOAUTH') || err.message.includes('Authentication')) {
+          logger.error('Notification publisher authentication failed');
+        } else {
+          logger.error('Notification publisher error:', err);
+        }
       });
 
       this.isPublisher = true;
       logger.info('Notification publisher initialized');
     } catch (error) {
       logger.error('Failed to initialize notification publisher:', error);
+      throw error;
     }
   }
 
-  /**
-   * Initialize as subscriber (for main server process)
-   * @param {Function} handler - Handler function to call when notification is received
-   */
   initializeSubscriber(handler) {
     if (this.subscriber) {
       logger.warn('Notification subscriber already initialized');
@@ -51,16 +57,28 @@ class NotificationBridgeService {
     }
 
     try {
+      const nodeEnv = process.env.NODE_ENV || 'development';
+      const redisPassword = process.env.REDIS_PASSWORD;
+      
+      if (nodeEnv === 'production' && !redisPassword) {
+        throw new Error('REDIS_PASSWORD required for notification bridge in production');
+      }
+
       this.subscriber = new Redis({
         host: process.env.REDIS_HOST || '127.0.0.1',
         port: process.env.REDIS_PORT || 6379,
-        password: process.env.REDIS_PASSWORD || undefined,
+        password: redisPassword || undefined,
+        username: process.env.REDIS_USERNAME || undefined,
         lazyConnect: false,
         retryStrategy: (times) => Math.min(times * 50, 2000)
       });
 
       this.subscriber.on('error', (err) => {
-        logger.error('Notification subscriber error:', err);
+        if (err.message.includes('NOAUTH') || err.message.includes('Authentication')) {
+          logger.error('Notification subscriber authentication failed');
+        } else {
+          logger.error('Notification subscriber error:', err);
+        }
       });
 
       this.subscriber.subscribe(NOTIFICATION_CHANNEL, (err) => {
@@ -86,6 +104,7 @@ class NotificationBridgeService {
       logger.info('Notification subscriber initialized');
     } catch (error) {
       logger.error('Failed to initialize notification subscriber:', error);
+      throw error;
     }
   }
 

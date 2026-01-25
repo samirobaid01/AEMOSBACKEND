@@ -1,3 +1,4 @@
+
 # Environment Variables Checklist
 
 ## 📋 Current Implementation - Required Variables

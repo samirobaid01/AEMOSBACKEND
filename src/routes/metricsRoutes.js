@@ -3,6 +3,7 @@ const router = express.Router();
 const { getQueueMetrics } = require('../ruleEngine/core/RuleEngineQueue');
 const backpressureManager = require('../services/backpressureManager');
 const timeoutMetrics = require('../utils/timeoutMetrics');
+const metricsManager = require('../utils/metricsManager');
 const logger = require('../utils/logger');
 
 router.get('/queue', async (req, res) => {
@@ -126,6 +127,8 @@ rule_engine_backpressure_threshold_warning ${backpressureStatus.thresholds.warni
 rule_engine_backpressure_threshold_critical ${backpressureStatus.thresholds.critical}
 
 ${timeoutMetrics.getPrometheusMetrics()}
+
+${metricsManager.getPrometheusMetrics()}
 `.trim();
 
     res.set('Content-Type', 'text/plain; version=0.0.4');

@@ -86,6 +86,15 @@ class CoAPPublisher {
       return;
     }
 
+    const metricsManager = require('../utils/metricsManager');
+    try {
+      metricsManager.incrementCounter('notifications_sent_total', {
+        protocol: 'coap'
+      });
+    } catch (err) {
+      logger.warn('Failed to record CoAP notification metric', { error: err.message });
+    }
+
     const payloadStr = typeof payload === 'string' ? payload : JSON.stringify(payload);
 
     const promises = Array.from(observersSet).map(async (obsJson) => {

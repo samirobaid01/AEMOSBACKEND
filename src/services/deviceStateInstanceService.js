@@ -1,5 +1,8 @@
 const { Device, DeviceState, DeviceStateInstance } = require('../models/initModels');
 const { ApiError } = require('../middlewares/errorHandler');
+const metricsManager = require('../utils/metricsManager');
+const sequelize = require('../config/database');
+const logger = require('../utils/logger');
 
 class DeviceStateInstanceService {
   async createInstance(data, userId) {
@@ -57,6 +60,35 @@ class DeviceStateInstanceService {
       initiatedBy: initiatedBy || 'user',
       initiatorId: userId
     });
+
+    // Record device state change metric
+    try {
+      const getOrganizationId = async (deviceId) => {
+        try {
+          const query = `
+            SELECT a.organizationId
+            FROM AreaDevice ad
+            JOIN Area a ON ad.areaId = a.id
+            WHERE ad.deviceId = ?
+            LIMIT 1
+          `;
+          const results = await sequelize.query(query, {
+            replacements: [deviceId],
+            type: sequelize.QueryTypes.SELECT
+          });
+          return results && results.length > 0 ? String(results[0].organizationId) : 'unknown';
+        } catch (err) {
+          return 'unknown';
+        }
+      };
+
+      const organizationId = await getOrganizationId(device.id);
+      metricsManager.incrementCounter('device_state_changes_total', {
+        organizationId: organizationId
+      });
+    } catch (err) {
+      logger.warn('Failed to record device state change metric', { error: err.message });
+    }
 
     // Return both instance and metadata for notifications
     return {

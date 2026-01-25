@@ -14,12 +14,14 @@
 
 | # | Issue | Effort | Impact | Priority | Status |
 |---|-------|--------|--------|----------|--------|
-| 1 | Optimize index with variable-level filtering + device support | 2.5 days | 10x speedup + 70% fewer executions | 🟠 P1 | Not Started |
-| 2 | Add rule execution timeouts + error codes | 1.25 days | Prevent hangs + observability | 🟠 P1 | Not Started |
-| 3 | Add Prometheus metrics (cardinality-safe) | 3 days | Observability | 🟠 P1 | Partial (P0) |
-| 4 | Validate rule chain config UUIDs | 1 day | Security | 🟠 P1 | Not Started |
+| 1 | Optimize index with variable-level filtering + device support | 2.5 days | 10x speedup + 70% fewer executions | 🟠 P1 | ✅ **COMPLETE** |
+| 2 | Add rule execution timeouts + error codes | 1.25 days | Prevent hangs + observability | 🟠 P1 | ✅ **COMPLETE** |
+| 3 | Add Prometheus metrics (cardinality-safe) | 3 days | Observability | 🟠 P1 | ✅ **COMPLETE** |
+| 4 | Validate rule chain config UUIDs | 1 day | Security | 🟠 P1 | ⏳ **PENDING** |
 
 **Total**: 7.75 days across 4 issues
+
+**Progress**: 3/4 issues complete (75% - 6.75 days completed)
 
 **🔴 Critical Updates Based on Expert Review:**
 - ✅ **Device-level variable support** (sensors vs devices separation)
@@ -107,17 +109,19 @@ Inspired by [ThingsBoard's](https://thingsboard.io/) state-of-the-art approach:
 
 ### Acceptance Criteria
 
-- [ ] **AC1**: Cache miss latency reduced from 150ms to <15ms (10x improvement)
-- [ ] **AC2**: Variable-level indexing: `(sensorUUID, variableName) → [ruleChainIds]`
-- [ ] **AC3**: Device-level indexing: `(deviceUUID, propertyName) → [ruleChainIds]`
-- [ ] **AC4**: Only trigger rule chains when incoming variables match filter requirements
-- [ ] **AC5**: Unnecessary rule executions reduced by 50-80%
-- [ ] **AC6**: Query uses MySQL JSON indexes instead of full table scan
-- [ ] **AC7**: Memory usage during cache miss reduced by 90%
-- [ ] **AC8**: Optional: Pre-build variable-level indexes on startup
-- [ ] **AC9**: Separate namespaces for sensors (telemetry) vs devices (state)
-- [ ] **AC10**: Unit tests cover sensors, devices, and mixed scenarios
-- [ ] **AC11**: Performance benchmarks documented (latency + execution reduction)
+- [x] **AC1**: Cache miss latency reduced from 150ms to <15ms (10x improvement) ✅
+- [x] **AC2**: Variable-level indexing: `(sensorUUID, variableName) → [ruleChainIds]` ✅
+- [x] **AC3**: Device-level indexing: `(deviceUUID, propertyName) → [ruleChainIds]` ✅
+- [x] **AC4**: Only trigger rule chains when incoming variables match filter requirements ✅
+- [x] **AC5**: Unnecessary rule executions reduced by 50-80% ✅
+- [x] **AC6**: Query uses MySQL JSON indexes instead of full table scan ✅
+- [x] **AC7**: Memory usage during cache miss reduced by 90% ✅
+- [x] **AC8**: Optional: Pre-build variable-level indexes on startup ✅
+- [x] **AC9**: Separate namespaces for sensors (telemetry) vs devices (state) ✅
+- [x] **AC10**: Unit tests cover sensors, devices, and mixed scenarios ✅
+- [x] **AC11**: Performance benchmarks documented (latency + execution reduction) ✅
+
+**Status**: ✅ **COMPLETE** - See `docs/P1-ISSUE1-VERIFIED.md` for details
 
 ### Technical Approach
 
@@ -819,14 +823,16 @@ async trigger(sensorUUID = null) {
 
 ### Acceptance Criteria
 
-- [ ] **AC1**: Rule execution times out after configurable duration (default 30s)
-- [ ] **AC2**: Sensor/device data collection has individual timeouts (default 5s each)
-- [ ] **AC3**: Timeout errors logged with full context (ruleChainId, sensorUUID, duration)
-- [ ] **AC4**: Timed-out jobs marked as "failed" with clear reason
-- [ ] **AC5**: Structured error codes for timeout classification
-- [ ] **AC6**: Metrics tracked for timeout frequency by error code
-- [ ] **AC7**: Configurable via environment variables
-- [ ] **AC8**: Unit tests cover all timeout scenarios
+- [x] **AC1**: Rule execution times out after configurable duration (default 30s) ✅
+- [x] **AC2**: Sensor/device data collection has individual timeouts (default 5s each) ✅
+- [x] **AC3**: Timeout errors logged with full context (ruleChainId, sensorUUID, duration) ✅
+- [x] **AC4**: Timed-out jobs marked as "failed" with clear reason ✅
+- [x] **AC5**: Structured error codes for timeout classification ✅
+- [x] **AC6**: Metrics tracked for timeout frequency by error code ✅
+- [x] **AC7**: Configurable via environment variables ✅
+- [x] **AC8**: Unit tests cover all timeout scenarios ✅
+
+**Status**: ✅ **COMPLETE** - See `docs/P1-ISSUE2-IMPLEMENTATION.md` for details
 
 ### Structured Error Codes (NEW)
 
@@ -1171,14 +1177,16 @@ describe('Timeout Integration', () => {
 
 ### Acceptance Criteria
 
-- [ ] **AC1**: All rule execution metrics exposed in Prometheus format
-- [ ] **AC2**: System metrics (HTTP, DB, Redis) tracked
-- [ ] **AC3**: Business metrics for monitoring SLAs
-- [ ] **AC4**: Cardinality control - avoid high-cardinality labels (sensorUUID, deviceUUID)
-- [ ] **AC5**: Grafana dashboard JSON provided
-- [ ] **AC6**: Alert rules defined for critical metrics
-- [ ] **AC7**: Documentation with example queries and cardinality warnings
-- [ ] **AC8**: Metrics don't impact performance (< 1ms overhead)
+- [x] **AC1**: All rule execution metrics exposed in Prometheus format ✅
+- [x] **AC2**: System metrics (HTTP, DB, Redis) tracked ✅
+- [x] **AC3**: Business metrics for monitoring SLAs ✅
+- [x] **AC4**: Cardinality control - avoid high-cardinality labels (sensorUUID, deviceUUID) ✅
+- [x] **AC5**: Grafana dashboard JSON provided ✅
+- [x] **AC6**: Alert rules defined for critical metrics ✅
+- [x] **AC7**: Documentation with example queries and cardinality warnings ✅
+- [x] **AC8**: Metrics don't impact performance (< 1ms overhead) ✅
+
+**Status**: ✅ **COMPLETE** - See `docs/P1-ISSUE3-IMPLEMENTATION.md` for details
 
 ### 🔴 CRITICAL: Cardinality Control
 

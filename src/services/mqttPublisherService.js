@@ -73,6 +73,15 @@ class MQTTPublisherService {
       return;
     }
 
+    const metricsManager = require('../utils/metricsManager');
+    try {
+      metricsManager.incrementCounter('notifications_sent_total', {
+        protocol: 'mqtt'
+      });
+    } catch (err) {
+      logger.warn('Failed to record MQTT notification metric', { error: err.message });
+    }
+
     const message = {
       type: 'device_state_change',
       deviceUuid: metadata.deviceUuid,

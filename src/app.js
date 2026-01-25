@@ -11,6 +11,7 @@ const sensorRoutes = require('./routes/sensorRoutes');
 const dataStreamRoutes = require('./routes/dataStreamRoutes');
 const deviceTokenRoutes = require('./routes/deviceTokenRoutes');
 const { errorHandler } = require('./middlewares/errorHandler');
+const metricsMiddleware = require('./middleware/metricsMiddleware');
 const logger = require('./utils/logger');
 const features = require('./config/features');
 const compression = require('compression');
@@ -27,6 +28,9 @@ app.use(cors());
 // Body parser middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// HTTP metrics middleware (early in chain, after body parsing)
+app.use(metricsMiddleware);
 
 // Middleware to log all requests with full path details
 app.use((req, res, next) => {

@@ -19,6 +19,7 @@ const RuleChainIndex = require('../ruleEngine/indexing/RuleChainIndex');
 const { collectWithTimeout, withTimeout } = require('../utils/timeoutUtils');
 const { TimeoutError, ERROR_CODES } = require('../utils/TimeoutError');
 const timeoutMetrics = require('../utils/timeoutMetrics');
+const metricsManager = require('../utils/metricsManager');
 const config = require('../config');
 // Ownership check function for middleware
 const getRuleChainForOwnershipCheck = async (id) => {
@@ -378,6 +379,15 @@ class RuleChainService {
               condition: config,
             });
 
+            try {
+              metricsManager.incrementCounter('rule_filter_evaluations_total', {
+                ruleChainId: String(ruleChainId),
+                result: actionResult ? 'passed' : 'failed'
+              });
+            } catch (err) {
+              logger.warn('Failed to record filter evaluation metric', { error: err.message });
+            }
+
             if (!actionResult) {
               allFiltersPassed = false;
               break;
@@ -427,6 +437,16 @@ class RuleChainService {
               notificationSent: false, // Will be updated after notification is sent
             });
             actionsExecuted++;
+
+            try {
+              const actionType = config.type || 'device_command';
+              metricsManager.incrementCounter('rule_action_executions_total', {
+                ruleChainId: String(ruleChainId),
+                actionType: String(actionType)
+              });
+            } catch (err) {
+              logger.warn('Failed to record action execution metric', { error: err.message });
+            }
             break;
 
           default:
@@ -480,20 +500,68 @@ class RuleChainService {
           operation: 'rule_chain_execution'
         }
       );
+
+      const duration = (Date.now() - startTime) / 1000;
+      const status = result.status || 'success';
+
+      try {
+        metricsManager.observeHistogram('rule_execution_duration_seconds', {
+          status: String(status)
+        }, duration);
+
+        metricsManager.incrementCounter('rule_execution_total', {
+          ruleChainId: String(ruleChainId),
+          status: String(status)
+        });
+
+        metricsManager.setGauge('rule_execution_nodes_executed', {
+          ruleChainId: String(ruleChainId)
+        }, result.summary?.totalNodes || 0);
+      } catch (err) {
+        logger.warn('Failed to record rule execution metrics', { error: err.message });
+      }
+
       return result;
     } catch (error) {
-      const duration = Date.now() - startTime;
+      const duration = (Date.now() - startTime) / 1000;
 
       if (error.isTimeout) {
         logger.error('Rule chain execution timed out', {
           ruleChainId,
           timeoutMs: timeout,
-          duration,
+          duration: duration * 1000,
           errorCode: error.code
         });
 
-        timeoutMetrics.recordTimeout(error.code, duration);
+        timeoutMetrics.recordTimeout(error.code, duration * 1000);
+
+        try {
+          metricsManager.observeHistogram('rule_execution_duration_seconds', {
+            status: 'timeout'
+          }, duration);
+
+          metricsManager.incrementCounter('rule_execution_total', {
+            ruleChainId: String(ruleChainId),
+            status: 'timeout'
+          });
+        } catch (err) {
+          logger.warn('Failed to record timeout metrics', { error: err.message });
+        }
+
         throw error;
+      }
+
+      try {
+        metricsManager.observeHistogram('rule_execution_duration_seconds', {
+          status: 'failure'
+        }, duration);
+
+        metricsManager.incrementCounter('rule_execution_total', {
+          ruleChainId: String(ruleChainId),
+          status: 'failure'
+        });
+      } catch (err) {
+        logger.warn('Failed to record failure metrics', { error: err.message });
       }
 
       throw error;
@@ -924,7 +992,26 @@ class RuleChainService {
       return sensorData;
     };
 
-    return collectWithTimeout(collectionFn, timeout, 'sensor', sourceIds);
+    const result = await collectWithTimeout(collectionFn, timeout, 'sensor', sourceIds);
+    
+    try {
+      const status = result.timeoutDetails.timedOut ? 'timeout' : 'success';
+      const duration = result.timeoutDetails.duration / 1000;
+      
+      metricsManager.observeHistogram('data_collection_duration_seconds', {
+        type: 'sensor',
+        status: String(status)
+      }, duration);
+
+      metricsManager.incrementCounter('data_collection_total', {
+        type: 'sensor',
+        status: String(status)
+      });
+    } catch (err) {
+      logger.warn('Failed to record sensor data collection metrics', { error: err.message });
+    }
+
+    return result;
   }
 
   /**
@@ -980,7 +1067,26 @@ class RuleChainService {
       return deviceData;
     };
 
-    return collectWithTimeout(collectionFn, timeout, 'device', sourceIds);
+    const result = await collectWithTimeout(collectionFn, timeout, 'device', sourceIds);
+    
+    try {
+      const status = result.timeoutDetails.timedOut ? 'timeout' : 'success';
+      const duration = result.timeoutDetails.duration / 1000;
+      
+      metricsManager.observeHistogram('data_collection_duration_seconds', {
+        type: 'device',
+        status: String(status)
+      }, duration);
+
+      metricsManager.incrementCounter('data_collection_total', {
+        type: 'device',
+        status: String(status)
+      });
+    } catch (err) {
+      logger.warn('Failed to record device data collection metrics', { error: err.message });
+    }
+
+    return result;
   }
 
   /**

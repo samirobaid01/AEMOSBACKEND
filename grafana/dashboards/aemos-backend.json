@@ -1,0 +1,347 @@
+{
+  "dashboard": {
+    "title": "AEMOS Backend - Rule Engine & System Metrics",
+    "tags": ["aemos", "backend", "rule-engine"],
+    "timezone": "browser",
+    "schemaVersion": 16,
+    "version": 1,
+    "refresh": "30s",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Rule Execution Rate",
+        "type": "graph",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+        "targets": [
+          {
+            "expr": "rate(rule_execution_total[5m])",
+            "legendFormat": "{{ruleChainId}} - {{status}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          { "format": "ops", "label": "Executions/sec" },
+          { "format": "short" }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Rule Execution Duration (p50/p95/p99)",
+        "type": "graph",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, rate(rule_execution_duration_seconds_bucket[5m]))",
+            "legendFormat": "p50",
+            "refId": "A"
+          },
+          {
+            "expr": "histogram_quantile(0.95, rate(rule_execution_duration_seconds_bucket[5m]))",
+            "legendFormat": "p95",
+            "refId": "B"
+          },
+          {
+            "expr": "histogram_quantile(0.99, rate(rule_execution_duration_seconds_bucket[5m]))",
+            "legendFormat": "p99",
+            "refId": "C"
+          }
+        ],
+        "yaxes": [
+          { "format": "s", "label": "Duration" },
+          { "format": "short" }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Rule Execution Success Rate",
+        "type": "graph",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+        "targets": [
+          {
+            "expr": "rate(rule_execution_total{status=\"success\"}[5m]) / rate(rule_execution_total[5m]) * 100",
+            "legendFormat": "Success Rate",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          { "format": "percent", "label": "Success %", "max": 100, "min": 0 },
+          { "format": "short" }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Rule Execution Failures",
+        "type": "graph",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+        "targets": [
+          {
+            "expr": "rate(rule_execution_total{status=\"failure\"}[5m])",
+            "legendFormat": "Failures",
+            "refId": "A"
+          },
+          {
+            "expr": "rate(rule_execution_total{status=\"timeout\"}[5m])",
+            "legendFormat": "Timeouts",
+            "refId": "B"
+          }
+        ],
+        "yaxes": [
+          { "format": "ops", "label": "Failures/sec" },
+          { "format": "short" }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "Queue Depth",
+        "type": "graph",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+        "targets": [
+          {
+            "expr": "rule_engine_queue_total_pending",
+            "legendFormat": "Pending Jobs",
+            "refId": "A"
+          },
+          {
+            "expr": "rule_engine_queue_waiting",
+            "legendFormat": "Waiting",
+            "refId": "B"
+          },
+          {
+            "expr": "rule_engine_queue_active",
+            "legendFormat": "Active",
+            "refId": "C"
+          }
+        ],
+        "yaxes": [
+          { "format": "short", "label": "Jobs" },
+          { "format": "short" }
+        ]
+      },
+      {
+        "id": 6,
+        "title": "Worker Utilization",
+        "type": "graph",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+        "targets": [
+          {
+            "expr": "rule_engine_workers",
+            "legendFormat": "Active Workers",
+            "refId": "A"
+          },
+          {
+            "expr": "rule_engine_queue_active / rule_engine_workers",
+            "legendFormat": "Jobs per Worker",
+            "refId": "B"
+          }
+        ],
+        "yaxes": [
+          { "format": "short", "label": "Count" },
+          { "format": "short" }
+        ]
+      },
+      {
+        "id": 7,
+        "title": "Data Collection Duration",
+        "type": "graph",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(data_collection_duration_seconds_bucket[5m]))",
+            "legendFormat": "{{type}} - p95",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          { "format": "s", "label": "Duration" },
+          { "format": "short" }
+        ]
+      },
+      {
+        "id": 8,
+        "title": "Data Collection Success Rate",
+        "type": "graph",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+        "targets": [
+          {
+            "expr": "rate(data_collection_total{status=\"success\"}[5m]) / rate(data_collection_total[5m]) * 100",
+            "legendFormat": "{{type}} - Success Rate",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          { "format": "percent", "label": "Success %", "max": 100, "min": 0 },
+          { "format": "short" }
+        ]
+      },
+      {
+        "id": 9,
+        "title": "HTTP Request Rate",
+        "type": "graph",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 32 },
+        "targets": [
+          {
+            "expr": "rate(http_requests_total[5m])",
+            "legendFormat": "{{method}} {{route}} - {{status_code}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          { "format": "ops", "label": "Requests/sec" },
+          { "format": "short" }
+        ]
+      },
+      {
+        "id": 10,
+        "title": "HTTP Request Duration (p95)",
+        "type": "graph",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 32 },
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))",
+            "legendFormat": "{{method}} {{route}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          { "format": "s", "label": "Duration" },
+          { "format": "short" }
+        ]
+      },
+      {
+        "id": 11,
+        "title": "Telemetry Ingestion Rate",
+        "type": "graph",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 40 },
+        "targets": [
+          {
+            "expr": "rate(telemetry_ingestion_total[5m])",
+            "legendFormat": "Org {{organizationId}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          { "format": "ops", "label": "Ingestions/sec" },
+          { "format": "short" }
+        ]
+      },
+      {
+        "id": 12,
+        "title": "Notifications Sent (by Protocol)",
+        "type": "graph",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 40 },
+        "targets": [
+          {
+            "expr": "rate(notifications_sent_total[5m])",
+            "legendFormat": "{{protocol}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          { "format": "ops", "label": "Notifications/sec" },
+          { "format": "short" }
+        ]
+      },
+      {
+        "id": 13,
+        "title": "Device State Changes",
+        "type": "graph",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 48 },
+        "targets": [
+          {
+            "expr": "rate(device_state_changes_total[5m])",
+            "legendFormat": "Org {{organizationId}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          { "format": "ops", "label": "Changes/sec" },
+          { "format": "short" }
+        ]
+      },
+      {
+        "id": 14,
+        "title": "Rule Timeouts",
+        "type": "graph",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 48 },
+        "targets": [
+          {
+            "expr": "rate(rule_timeout_total[5m])",
+            "legendFormat": "{{error_code}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          { "format": "ops", "label": "Timeouts/sec" },
+          { "format": "short" }
+        ]
+      },
+      {
+        "id": 15,
+        "title": "Queue Health Status",
+        "type": "stat",
+        "gridPos": { "h": 4, "w": 6, "x": 0, "y": 56 },
+        "targets": [
+          {
+            "expr": "rule_engine_queue_health",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "colorMode": "value",
+          "graphMode": "area",
+          "justifyMode": "auto",
+          "orientation": "auto",
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"],
+            "fields": ""
+          },
+          "textMode": "auto"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "mappings": [
+              { "options": { "0": { "text": "Healthy", "color": "green" } }, "type": "value" },
+              { "options": { "1": { "text": "Degraded", "color": "yellow" } }, "type": "value" },
+              { "options": { "2": { "text": "Warning", "color": "orange" } }, "type": "value" },
+              { "options": { "3": { "text": "Critical", "color": "red" } }, "type": "value" }
+            ]
+          }
+        }
+      },
+      {
+        "id": 16,
+        "title": "Backpressure Circuit State",
+        "type": "stat",
+        "gridPos": { "h": 4, "w": 6, "x": 6, "y": 56 },
+        "targets": [
+          {
+            "expr": "rule_engine_backpressure_circuit_state",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "colorMode": "value",
+          "graphMode": "area",
+          "justifyMode": "auto",
+          "orientation": "auto",
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"],
+            "fields": ""
+          },
+          "textMode": "auto"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "mappings": [
+              { "options": { "0": { "text": "CLOSED", "color": "green" } }, "type": "value" },
+              { "options": { "1": { "text": "HALF_OPEN", "color": "yellow" } }, "type": "value" },
+              { "options": { "2": { "text": "OPEN", "color": "red" } }, "type": "value" }
+            ]
+          }
+        }
+      }
+    ]
+  }
+}

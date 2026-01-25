@@ -941,9 +941,9 @@ class RuleChainService {
    * @param {string} options.deviceUuid - Device UUID that triggered this (for CoAP notifications)
    * @returns {Promise} Results of rule chain executions
    */
-  async trigger(sensorUUID = null) {
+  async trigger(sensorUUID = null, variableNames = []) {
     try {
-      const ruleChainIds = await RuleChainIndex.getRuleChainsForSensor(sensorUUID);
+      const ruleChainIds = await RuleChainIndex.getRuleChainsForSensor(sensorUUID, variableNames);
       if (!ruleChainIds.length) {
         console.log('No rule chains found for sensor UUID:', sensorUUID);
         return;

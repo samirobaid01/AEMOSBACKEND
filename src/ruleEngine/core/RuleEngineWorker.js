@@ -20,7 +20,8 @@ const processEvent = async (job) => {
         return { status: 'ignored', reason: 'Missing sensorUUID' };
       }
 
-      const result = await ruleChainService.trigger(sensorUUID);
+      const variableNames = payload?.variableNames || [];
+      const result = await ruleChainService.trigger(sensorUUID, variableNames);
       return { status: 'ok', result };
     }
     case 'scheduled': {

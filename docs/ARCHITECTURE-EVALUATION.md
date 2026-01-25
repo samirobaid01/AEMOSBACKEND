@@ -762,6 +762,90 @@ metricsClient.histogram('rule_execution_duration', duration, { ruleChainId });
 | 🟡 P2 | Add notification delivery guarantees | 3 days | Reliability |
 | 🟡 P2 | Add distributed tracing | 5 days | Debugging |
 | 🟡 P2 | Pre-build full index on startup | 2 days | Eliminate cold starts |
+| 🟡 P2 | Add AND-condition pre-filtering | 1 day | 10-20% fewer executions |
+| 🟡 P2 | Introduce RuleContext architecture | 3 days | Cleaner execution model |
+
+#### 🟡 P2: AND-Condition Pre-Filtering
+
+**Problem**: After P1 variable-level filtering, some rule chains may still be triggered with incomplete data.
+
+**Example**:
+```javascript
+// Rule requires: [temperature, humidity]
+// Incoming: [temperature] only
+// Current P1: Queues the rule (fails at evaluation)
+// Improved P2: Skips early (doesn't queue)
+```
+
+**Solution**:
+```javascript
+// Store required variables metadata
+RuleChainMetadata {
+  requiredVariables: {
+    sensor: ["temperature", "humidity"],
+    device: ["power"]
+  }
+}
+
+// Pre-check before queueing
+if (!requiredVariables.sensor.every(v => incomingVars.includes(v))) {
+  skip; // Don't queue
+}
+```
+
+**Benefits**:
+- Additional 10-20% reduction in executions
+- Lower queue pressure
+- Fewer database queries for data collection
+
+**When to Implement**: After P1 metrics show partial-data triggers are significant (>10% of executions).
+
+---
+
+#### 🟡 P2: RuleContext Architecture
+
+**Problem**: Data passed implicitly between components, making execution harder to trace and retry.
+
+**Current Approach**:
+```javascript
+// Scattered data
+trigger(sensorUUID, payload) {
+  const sensorData = await collectSensor(...);
+  const deviceData = await collectDevice(...);
+  execute(ruleChain, { sensorData, deviceData });
+}
+```
+
+**Improved Approach (ThingsBoard-style)**:
+```javascript
+// Unified context object
+RuleContext {
+  originatorType: 'sensor' | 'device'
+  originatorId: UUID
+  telemetry: {}
+  deviceState: {}
+  metadata: {
+    orgId
+    areaId
+    timestamp
+    ruleChainId
+    triggeredBy
+  }
+}
+
+// Pass context through pipeline
+const context = buildRuleContext(event);
+await executeWithContext(ruleChain, context);
+```
+
+**Benefits**:
+- ✅ **Cleaner execution**: Immutable context
+- ✅ **Easier retries**: Full context in one object
+- ✅ **Better audit logs**: Complete execution trace
+- ✅ **Future Kafka integration**: Serialize entire context
+- ✅ **Debugging**: Replay events with exact context
+
+**When to Implement**: After P1 stabilizes, as this requires refactoring existing execution flow (3 days).
 
 ### 6.4 Low Priority (Future)
 

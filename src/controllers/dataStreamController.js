@@ -78,10 +78,39 @@ const createDataStream = async (req, res, next) => {
       },
     });
 
-    // Queue notification asynchronously (after response sent)
-    process.nextTick(() => {
+    const capturedTelemetryDataId = dataStream.telemetryDataId;
+    const capturedDataStreamId = dataStream.id;
+    const capturedRecievedAt = dataStream.recievedAt;
+
+    // Queue notification and rule engine asynchronously (after response sent)
+    process.nextTick(async () => {
+      const telemetryData = await TelemetryData.findByPk(capturedTelemetryDataId, {
+        include: [{
+          model: Sensor,
+          as: 'Sensor',
+          attributes: ['uuid']
+        }],
+        attributes: ['variableName']
+      });
+
+      if (telemetryData && telemetryData.Sensor) {
+        const capturedVariableName = telemetryData.variableName;
+        const capturedSensorUuid = telemetryData.Sensor.uuid;
+
+        const skipRuleChainTrigger = req.body.skipRuleChainTrigger === true;
+        
+        if (!skipRuleChainTrigger) {
+          ruleEngineEventBus.emit('telemetry-data', {
+            sensorUUID: capturedSensorUuid,
+            dataStreamId: capturedDataStreamId,
+            telemetryDataId: capturedTelemetryDataId,
+            recievedAt: capturedRecievedAt,
+            variableNames: capturedVariableName ? [capturedVariableName] : undefined
+          });
+        }
+      }
+
       // Determine priority based on business rules
-      // For example, if there's an 'urgent' flag or value exceeds thresholds
       const isPriority = req.body.urgent === true || 
                         (req.body.thresholds && isThresholdExceeded(req.body.value, req.body.thresholds));
       
@@ -202,6 +231,10 @@ const createBatchDataStreams = async (req, res, next) => {
     const telemetryByName = new Map(
       telemetryEntries.map(entry => [entry.variableName, entry.id])
     );
+    
+    const telemetryIdToVariableName = new Map(
+      telemetryEntries.map(entry => [entry.id, entry.variableName])
+    );
 
     const now = new Date();
     const preparedStreams = dataStreams.map(item => {
@@ -231,10 +264,13 @@ const createBatchDataStreams = async (req, res, next) => {
         dataStreams: createdStreams,
       },
     });
+    
+    const capturedTelemetryIdToVariableName = telemetryIdToVariableName;
+    const capturedSensorId = sensorId;
 
     // Process notifications and rule engine asynchronously after response
     process.nextTick(async () => {
-      const sensorInstance = await Sensor.findByPk(sensorId);
+      const sensorInstance = await Sensor.findByPk(capturedSensorId);
       const sensorUUID = sensorInstance?.uuid;
 
       // Handle notifications in chunks to avoid blocking
@@ -270,11 +306,14 @@ const createBatchDataStreams = async (req, res, next) => {
 
       if (sensorUUID) {
         createdStreams.forEach((dataStream) => {
+          const variableName = capturedTelemetryIdToVariableName.get(dataStream.telemetryDataId);
+          
           ruleEngineEventBus.emit('telemetry-data', {
             sensorUUID,
             dataStreamId: dataStream.id,
             telemetryDataId: dataStream.telemetryDataId,
-            recievedAt: dataStream.recievedAt
+            recievedAt: dataStream.recievedAt,
+            variableNames: variableName ? [variableName] : undefined
           });
         });
       }
@@ -351,6 +390,10 @@ const createDataStreamWithToken = async (req, res) => {
       status: 'success',
       data: newDataStream
     });
+    
+    const capturedVariableName = telemetryData.variableName;
+    const capturedSensorUuid = sensorInstance.uuid;
+    
     process.nextTick(async () => {
       // Check if rule chain triggering should be skipped (for internal publisher messages)
       const skipRuleChainTrigger = req.body.skipRuleChainTrigger === true;
@@ -404,10 +447,11 @@ const createDataStreamWithToken = async (req, res) => {
       // Trigger rule engine only if not skipped
       if (!skipRuleChainTrigger) {
         const emitResult = await ruleEngineEventBus.emit('telemetry-data', {
-          sensorUUID: sensorInstance.uuid,
+          sensorUUID: capturedSensorUuid,
           dataStreamId: newDataStream.id,
           telemetryDataId: newDataStream.telemetryDataId,
-          recievedAt: newDataStream.recievedAt
+          recievedAt: newDataStream.recievedAt,
+          variableNames: capturedVariableName ? [capturedVariableName] : undefined
         });
 
         if (emitResult && emitResult.rejected) {
@@ -416,6 +460,12 @@ const createDataStreamWithToken = async (req, res) => {
             dataStreamId: newDataStream.id,
             reason: emitResult.reason,
             queueDepth: emitResult.queueDepth
+          });
+        } else if (emitResult && emitResult.skipped) {
+          logger.debug('Rule engine event skipped', {
+            sensorUUID: sensorInstance.uuid,
+            dataStreamId: newDataStream.id,
+            reason: emitResult.reason
           });
         }
       } else {

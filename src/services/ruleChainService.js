@@ -16,6 +16,10 @@ const logger = require('../utils/logger');
 const sequelize = require('../config/database');
 const { Sequelize } = require('sequelize');
 const RuleChainIndex = require('../ruleEngine/indexing/RuleChainIndex');
+const { collectWithTimeout, withTimeout } = require('../utils/timeoutUtils');
+const { TimeoutError, ERROR_CODES } = require('../utils/TimeoutError');
+const timeoutMetrics = require('../utils/timeoutMetrics');
+const config = require('../config');
 // Ownership check function for middleware
 const getRuleChainForOwnershipCheck = async (id) => {
   try {
@@ -311,11 +315,16 @@ class RuleChainService {
    * @param {Object} rawData - Object containing arrays of sensor and device data
    * @param {Array} rawData.sensorData - Array of sensor data objects with UUID
    * @param {Array} rawData.deviceData - Array of device data objects with UUID
+   * @param {Object} rawData.meta - Metadata about partial data (optional)
+   * @param {number} timeoutMs - Timeout for rule chain execution (optional)
    */
-  async execute(ruleChainId, rawData) {
-    try {
+  async execute(ruleChainId, rawData, timeoutMs = null) {
+    const timeout = timeoutMs || config.ruleEngine.timeouts.ruleChain;
+    const startTime = Date.now();
+
+    const executeFn = async () => {
       // Transform arrays into maps for efficient lookup
-      const data = this._transformDataToMaps(rawData);
+      let data = this._transformDataToMaps(rawData);
 
       // Get rule chain with nodes
       const ruleChain = await this.findChainById(ruleChainId);
@@ -456,8 +465,37 @@ class RuleChainService {
           executedNodes: results,
           finalData: data,
         },
+        meta: rawData.meta || {},
       };
+    };
+
+    try {
+      const result = await withTimeout(
+        executeFn(),
+        timeout,
+        ERROR_CODES.RULE_CHAIN_TIMEOUT,
+        {
+          ruleChainId,
+          timeoutMs: timeout,
+          operation: 'rule_chain_execution'
+        }
+      );
+      return result;
     } catch (error) {
+      const duration = Date.now() - startTime;
+
+      if (error.isTimeout) {
+        logger.error('Rule chain execution timed out', {
+          ruleChainId,
+          timeoutMs: timeout,
+          duration,
+          errorCode: error.code
+        });
+
+        timeoutMetrics.recordTimeout(error.code, duration);
+        throw error;
+      }
+
       throw error;
     }
   }
@@ -824,115 +862,125 @@ class RuleChainService {
   }
 
   /**
-   * Collects latest sensor values based on requirements
+   * Collects latest sensor values based on requirements with timeout
    * @param {Map} sensorReqs - Map of sensor UUIDs to required parameters
-   * @returns {Array} Array of sensor data objects
+   * @param {number} timeoutMs - Timeout in milliseconds
+   * @returns {Promise<{data: Array, timeoutDetails: Object}>} Sensor data and timeout information
    */
-  async _collectSensorData(sensorReqs) {
-    const sensorData = [];
+  async _collectSensorData(sensorReqs, timeoutMs = null) {
+    const timeout = timeoutMs || config.ruleEngine.timeouts.dataCollection;
+    const sourceIds = Array.from(sensorReqs.keys());
 
-    for (const [UUID, parameters] of sensorReqs) {
-      try {
-        const sensor = await Sensor.findOne({ where: { UUID } });
-        if (!sensor) continue;
+    const collectionFn = async () => {
+      const sensorData = [];
 
-        const sensorDataObject = { UUID };
+      for (const [UUID, parameters] of sensorReqs) {
+        try {
+          const sensor = await Sensor.findOne({ where: { UUID } });
+          if (!sensor) continue;
 
-        for (const param of parameters) {
-          const telemetry = await TelemetryData.findOne({
-            where: {
-              sensorId: sensor.id,
-              variableName: param,
-            },
-          });
+          const sensorDataObject = { UUID };
 
-          if (telemetry) {
-            const latestStream = await DataStream.findOne({
-              where: { telemetryDataId: telemetry.id },
-              order: [['recievedAt', 'DESC']],
-              limit: 1,
+          for (const param of parameters) {
+            const telemetry = await TelemetryData.findOne({
+              where: {
+                sensorId: sensor.id,
+                variableName: param,
+              },
             });
 
-            if (latestStream) {
-              // Convert value based on telemetry datatype
-              let value = latestStream.value;
-              let receivedAt = latestStream.recievedAt;
-              switch (telemetry.datatype) {
-                case 'number':
-                  value = Number(value);
-                  break;
-                case 'boolean':
-                  value = value.toLowerCase() === 'true';
-                  break;
-                // String and other types remain as is
+            if (telemetry) {
+              const latestStream = await DataStream.findOne({
+                where: { telemetryDataId: telemetry.id },
+                order: [['recievedAt', 'DESC']],
+                limit: 1,
+              });
+
+              if (latestStream) {
+                let value = latestStream.value;
+                let receivedAt = latestStream.recievedAt;
+                switch (telemetry.datatype) {
+                  case 'number':
+                    value = Number(value);
+                    break;
+                  case 'boolean':
+                    value = value.toLowerCase() === 'true';
+                    break;
+                }
+                sensorDataObject[param] = value;
+                sensorDataObject['timestamp'] = receivedAt;
               }
-              sensorDataObject[param] = value;
-              sensorDataObject['timestamp'] = receivedAt;
             }
           }
-        }
 
-        if (Object.keys(sensorDataObject).length > 1) {
-          // > 1 because UUID is always there
-          sensorData.push(sensorDataObject);
+          if (Object.keys(sensorDataObject).length > 1) {
+            sensorData.push(sensorDataObject);
+          }
+        } catch (error) {
+          logger.error(`Error collecting sensor data for UUID ${UUID}:`, error);
         }
-      } catch (error) {
-        logger.error(`Error collecting sensor data for UUID ${UUID}:`, error);
-        // Continue with next sensor
       }
-    }
 
-    return sensorData;
+      return sensorData;
+    };
+
+    return collectWithTimeout(collectionFn, timeout, 'sensor', sourceIds);
   }
 
   /**
-   * Collects latest device state values based on requirements
+   * Collects latest device state values based on requirements with timeout
    * @param {Map} deviceReqs - Map of device UUIDs to required parameters
-   * @returns {Array} Array of device data objects
+   * @param {number} timeoutMs - Timeout in milliseconds
+   * @returns {Promise<{data: Array, timeoutDetails: Object}>} Device data and timeout information
    */
-  async _collectDeviceData(deviceReqs) {
-    const deviceData = [];
+  async _collectDeviceData(deviceReqs, timeoutMs = null) {
+    const timeout = timeoutMs || config.ruleEngine.timeouts.dataCollection;
+    const sourceIds = Array.from(deviceReqs.keys());
 
-    for (const [UUID, parameters] of deviceReqs) {
-      try {
-        const device = await Device.findOne({ where: { UUID } });
-        if (!device) continue;
+    const collectionFn = async () => {
+      const deviceData = [];
 
-        const deviceDataObject = { UUID };
+      for (const [UUID, parameters] of deviceReqs) {
+        try {
+          const device = await Device.findOne({ where: { UUID } });
+          if (!device) continue;
 
-        for (const param of parameters) {
-          const state = await DeviceState.findOne({
-            where: {
-              deviceId: device.id,
-              stateName: param,
-            },
-          });
+          const deviceDataObject = { UUID };
 
-          if (state) {
-            const latestInstance = await DeviceStateInstance.findOne({
-              where: { deviceStateId: state.id },
-              order: [['fromTimestamp', 'DESC']],
-              limit: 1,
+          for (const param of parameters) {
+            const state = await DeviceState.findOne({
+              where: {
+                deviceId: device.id,
+                stateName: param,
+              },
             });
 
-            if (latestInstance) {
-              deviceDataObject[param] = latestInstance.value;
-              deviceDataObject['timestamp'] = latestInstance.fromTimestamp;
+            if (state) {
+              const latestInstance = await DeviceStateInstance.findOne({
+                where: { deviceStateId: state.id },
+                order: [['fromTimestamp', 'DESC']],
+                limit: 1,
+              });
+
+              if (latestInstance) {
+                deviceDataObject[param] = latestInstance.value;
+                deviceDataObject['timestamp'] = latestInstance.fromTimestamp;
+              }
             }
           }
-        }
 
-        if (Object.keys(deviceDataObject).length > 1) {
-          // > 1 because UUID is always there
-          deviceData.push(deviceDataObject);
+          if (Object.keys(deviceDataObject).length > 1) {
+            deviceData.push(deviceDataObject);
+          }
+        } catch (error) {
+          logger.error(`Error collecting device data for UUID ${UUID}:`, error);
         }
-      } catch (error) {
-        logger.error(`Error collecting device data for UUID ${UUID}:`, error);
-        // Continue with next device
       }
-    }
 
-    return deviceData;
+      return deviceData;
+    };
+
+    return collectWithTimeout(collectionFn, timeout, 'device', sourceIds);
   }
 
   /**
@@ -995,19 +1043,92 @@ class RuleChainService {
             }
           }
 
-          // 3. Collect required data
-          const [sensorData, deviceData] = await Promise.all([
-            this._collectSensorData(sensorReqs),
-            this._collectDeviceData(deviceReqs),
+          // 3. Collect required data with timeouts
+          const ruleChainStartTime = Date.now();
+          const dataCollectionTimeout = config.ruleEngine.timeouts.dataCollection;
+          const ruleChainTimeout = config.ruleEngine.timeouts.ruleChain;
+
+          const missingSources = [];
+          const timeoutDetails = {};
+
+          const [sensorResult, deviceResult] = await Promise.all([
+            this._collectSensorData(sensorReqs, dataCollectionTimeout)
+              .catch(err => {
+                if (err.isTimeout) {
+                  const sourceIds = Array.from(sensorReqs.keys());
+                  missingSources.push(...sourceIds.map(id => `sensor:${id}`));
+                  timeoutDetails.sensor = {
+                    timedOut: true,
+                    duration: err.context?.duration || dataCollectionTimeout
+                  };
+                  timeoutMetrics.recordTimeout(err.code, err.context?.duration || dataCollectionTimeout);
+                  logger.warn('Sensor data collection timed out', {
+                    ruleChainId: ruleChain.id,
+                    sensorUUIDs: sourceIds,
+                    timeoutMs: dataCollectionTimeout,
+                    errorCode: err.code
+                  });
+                  return { data: [], timeoutDetails: { timedOut: true, duration: err.context?.duration || dataCollectionTimeout } };
+                }
+                throw err;
+              }),
+            this._collectDeviceData(deviceReqs, dataCollectionTimeout)
+              .catch(err => {
+                if (err.isTimeout) {
+                  const sourceIds = Array.from(deviceReqs.keys());
+                  missingSources.push(...sourceIds.map(id => `device:${id}`));
+                  timeoutDetails.device = {
+                    timedOut: true,
+                    duration: err.context?.duration || dataCollectionTimeout
+                  };
+                  timeoutMetrics.recordTimeout(err.code, err.context?.duration || dataCollectionTimeout);
+                  logger.warn('Device data collection timed out', {
+                    ruleChainId: ruleChain.id,
+                    deviceUUIDs: sourceIds,
+                    timeoutMs: dataCollectionTimeout,
+                    errorCode: err.code
+                  });
+                  return { data: [], timeoutDetails: { timedOut: true, duration: err.context?.duration || dataCollectionTimeout } };
+                }
+                throw err;
+              })
           ]);
 
-          // 4. Execute rule chain with collected data
-          const rawData = {
+          const sensorData = sensorResult.data || sensorResult;
+          const deviceData = deviceResult.data || deviceResult;
+
+          if (sensorResult.timeoutDetails) {
+            timeoutDetails.sensor = sensorResult.timeoutDetails;
+            if (sensorResult.timeoutDetails.timedOut) {
+              const sourceIds = Array.from(sensorReqs.keys());
+              missingSources.push(...sourceIds.map(id => `sensor:${id}`));
+              timeoutMetrics.recordTimeout(ERROR_CODES.DATA_COLLECTION_TIMEOUT, sensorResult.timeoutDetails.duration);
+            }
+          }
+          if (deviceResult.timeoutDetails) {
+            timeoutDetails.device = deviceResult.timeoutDetails;
+            if (deviceResult.timeoutDetails.timedOut) {
+              const sourceIds = Array.from(deviceReqs.keys());
+              missingSources.push(...sourceIds.map(id => `device:${id}`));
+              timeoutMetrics.recordTimeout(ERROR_CODES.DATA_COLLECTION_TIMEOUT, deviceResult.timeoutDetails.duration);
+            }
+          }
+
+          // 4. Build execution context with metadata
+          const executionContext = {
             sensorData,
             deviceData,
+            meta: {
+              partialData: missingSources.length > 0,
+              missingSources,
+              timeoutDetails,
+              executionStart: ruleChainStartTime
+            }
           };
 
-          const executionResult = await this.execute(ruleChain.id, rawData);
+          // 5. Execute rule chain with timeout
+          const remainingTime = ruleChainTimeout - (Date.now() - ruleChainStartTime);
+          const executionResult = await this.execute(ruleChain.id, executionContext, Math.max(remainingTime, 1000));
           results.push({
             ruleChainId: ruleChain.id,
             name: ruleChain.name,
@@ -1066,13 +1187,43 @@ class RuleChainService {
             }
           }
         } catch (error) {
-          results.push({
-            ruleChainId: ruleChain.id,
-            name: ruleChain.name,
-            status: 'error',
-            error: error.message,
-          });
-          // Continue with next rule chain
+          const duration = Date.now() - ruleChainStartTime;
+
+          if (error.isTimeout) {
+            logger.error('Rule chain execution timed out', {
+              ruleChainId: ruleChain.id,
+              ruleChainName: ruleChain.name,
+              timeoutMs: ruleChainTimeout,
+              duration,
+              errorCode: error.code,
+              context: error.context
+            });
+
+            timeoutMetrics.recordTimeout(error.code, duration);
+            results.push({
+              ruleChainId: ruleChain.id,
+              name: ruleChain.name,
+              status: 'timeout',
+              error: error.message,
+              errorCode: error.code,
+              duration
+            });
+          } else {
+            logger.error('Rule chain execution failed', {
+              ruleChainId: ruleChain.id,
+              ruleChainName: ruleChain.name,
+              error: error.message,
+              duration
+            });
+
+            results.push({
+              ruleChainId: ruleChain.id,
+              name: ruleChain.name,
+              status: 'error',
+              error: error.message,
+              duration
+            });
+          }
         }
       }
       /*

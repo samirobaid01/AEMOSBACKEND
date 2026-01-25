@@ -59,8 +59,48 @@ module.exports = {
     defaultEventPriority: parseInt(process.env.DEFAULT_EVENT_PRIORITY || '5', 10)
   },
   ruleEngine: {
-    workerConcurrency: parseInt(process.env.RULE_ENGINE_WORKER_CONCURRENCY || '20', 10)
+    workerConcurrency: parseInt(process.env.RULE_ENGINE_WORKER_CONCURRENCY || '20', 10),
+    timeouts: {
+      dataCollection: parseInt(process.env.DATA_COLLECTION_TIMEOUT || '5000', 10),
+      ruleChain: parseInt(process.env.RULE_CHAIN_TIMEOUT || '30000', 10),
+      workerLock: parseInt(process.env.WORKER_LOCK_DURATION || '60000', 10),
+      workerMaxStalledCount: parseInt(process.env.WORKER_MAX_STALLED_COUNT || '2', 10)
+    }
   },
   features,
   broadcastAll: features.notifications.broadcastAll
-}; 
+};
+
+const validateTimeoutConfig = () => {
+  const { timeouts } = module.exports.ruleEngine;
+  const errors = [];
+
+  if (timeouts.dataCollection < 1000 || timeouts.dataCollection > 30000) {
+    errors.push(`DATA_COLLECTION_TIMEOUT must be between 1000-30000ms, got ${timeouts.dataCollection}`);
+  }
+
+  if (timeouts.ruleChain < 10000 || timeouts.ruleChain > 120000) {
+    errors.push(`RULE_CHAIN_TIMEOUT must be between 10000-120000ms, got ${timeouts.ruleChain}`);
+  }
+
+  if (timeouts.workerLock < 30000 || timeouts.workerLock > 300000) {
+    errors.push(`WORKER_LOCK_DURATION must be between 30000-300000ms, got ${timeouts.workerLock}`);
+  }
+
+  if (timeouts.dataCollection >= timeouts.ruleChain) {
+    errors.push(`DATA_COLLECTION_TIMEOUT (${timeouts.dataCollection}ms) must be less than RULE_CHAIN_TIMEOUT (${timeouts.ruleChain}ms)`);
+  }
+
+  if (timeouts.ruleChain >= timeouts.workerLock) {
+    errors.push(`RULE_CHAIN_TIMEOUT (${timeouts.ruleChain}ms) must be less than WORKER_LOCK_DURATION (${timeouts.workerLock}ms)`);
+  }
+
+  if (errors.length > 0) {
+    console.error('\n❌ TIMEOUT CONFIGURATION ERRORS:\n');
+    errors.forEach(error => console.error(`   - ${error}`));
+    console.error('\nPlease fix the timeout configuration.\n');
+    throw new Error('Invalid timeout configuration');
+  }
+};
+
+validateTimeoutConfig(); 

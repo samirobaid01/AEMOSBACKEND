@@ -20,6 +20,7 @@ const { collectWithTimeout, withTimeout } = require('../utils/timeoutUtils');
 const { TimeoutError, ERROR_CODES } = require('../utils/TimeoutError');
 const timeoutMetrics = require('../utils/timeoutMetrics');
 const metricsManager = require('../utils/metricsManager');
+const { validateRuleChainConfig } = require('../utils/uuidValidator');
 const config = require('../config');
 // Ownership check function for middleware
 const getRuleChainForOwnershipCheck = async (id) => {
@@ -211,7 +212,30 @@ class RuleChainService {
   // RuleChainNode operations
   async createNode(data) {
     try {
-      // Check if a node with the same name exists in the same rule chain
+      let config = data.config;
+      
+      if (config) {
+        if (typeof config === 'string') {
+          try {
+            config = JSON.parse(config);
+          } catch (err) {
+            const error = new Error('Invalid JSON in config field');
+            error.statusCode = 400;
+            throw error;
+          }
+        }
+        
+        const validation = validateRuleChainConfig(config, data.type);
+        if (!validation.valid) {
+          const error = new Error('Invalid rule chain node configuration: one or more UUIDs are invalid');
+          error.statusCode = 400;
+          error.details = validation.errors;
+          throw error;
+        }
+        
+        data.config = typeof data.config === 'string' ? data.config : JSON.stringify(config);
+      }
+      
       const existingNode = await RuleChainNode.findOne({
         where: {
           ruleChainId: data.ruleChainId,
@@ -273,13 +297,41 @@ class RuleChainService {
         throw new Error('Node not found');
       }
 
-      // If name is being updated, check for uniqueness
+      let config = data.config;
+      
+      if (config !== undefined) {
+        if (config === null) {
+          data.config = null;
+        } else {
+          if (typeof config === 'string') {
+            try {
+              config = JSON.parse(config);
+            } catch (err) {
+              const error = new Error('Invalid JSON in config field');
+              error.statusCode = 400;
+              throw error;
+            }
+          }
+          
+          const nodeType = data.type || node.type;
+          const validation = validateRuleChainConfig(config, nodeType);
+          if (!validation.valid) {
+            const error = new Error('Invalid rule chain node configuration: one or more UUIDs are invalid');
+            error.statusCode = 400;
+            error.details = validation.errors;
+            throw error;
+          }
+          
+          data.config = typeof data.config === 'string' ? data.config : JSON.stringify(config);
+        }
+      }
+
       if (data.name && data.name !== node.name) {
         const existingNode = await RuleChainNode.findOne({
           where: {
             ruleChainId: node.ruleChainId,
             name: data.name,
-            id: { [Sequelize.Op.ne]: id }, // Exclude current node
+            id: { [Sequelize.Op.ne]: id },
           },
         });
 

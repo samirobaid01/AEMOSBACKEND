@@ -62,6 +62,16 @@ function broadcastToAll(event, data) {
   
   io.emit(event, data);
   logger.debug(`Broadcasting event "${event}" to all clients`);
+  
+  const metricsManager = require('./metricsManager');
+  try {
+    metricsManager.incrementCounter('notifications_sent_total', {
+      protocol: 'socket'
+    });
+  } catch (err) {
+    logger.warn('Failed to record Socket.IO notification metric', { error: err.message });
+  }
+  
   return true;
 }
 
@@ -79,6 +89,16 @@ function broadcastToRoom(room, event, data) {
   
   io.to(room).emit(event, data);
   logger.debug(`Broadcasting event "${event}" to room: ${room}`);
+  
+  const metricsManager = require('./metricsManager');
+  try {
+    metricsManager.incrementCounter('notifications_sent_total', {
+      protocol: 'socket'
+    });
+  } catch (err) {
+    logger.warn('Failed to record Socket.IO notification metric', { error: err.message });
+  }
+  
   return true;
 }
 
@@ -108,7 +128,7 @@ function sendToClient(socketId, event, data) {
 module.exports = {
   initialize,
   broadcastToAll,
-  broadcastToRoom,
+  broadcastToRoom: broadcastToRoom,
   sendToClient,
   getIo: () => io
 }; 

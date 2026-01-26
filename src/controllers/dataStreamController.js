@@ -10,6 +10,8 @@ const ruleEngineEventBus = require('../ruleEngine/core/RuleEngineEventBus');
 const mqttPublisher = require('../services/mqttPublisherService');
 const coapPublisher = require('../services/coapPublisherService');
 const Sensor = require('../models/Sensor');
+const metricsManager = require('../utils/metricsManager');
+const sequelize = require('../config/database');
 // Get all data streams
 const getAllDataStreams = async (req, res, next) => {
   try {
@@ -81,6 +83,37 @@ const createDataStream = async (req, res, next) => {
     const capturedTelemetryDataId = dataStream.telemetryDataId;
     const capturedDataStreamId = dataStream.id;
     const capturedRecievedAt = dataStream.recievedAt;
+
+    // Record telemetry ingestion metric
+    try {
+      const getOrganizationId = async (telemetryDataId) => {
+        try {
+          const query = `
+            SELECT a.organizationId
+            FROM TelemetryData td
+            JOIN Sensor s ON td.sensorId = s.id
+            JOIN AreaSensor as_rel ON s.id = as_rel.sensorId
+            JOIN Area a ON as_rel.areaId = a.id
+            WHERE td.id = ?
+            LIMIT 1
+          `;
+          const results = await sequelize.query(query, {
+            replacements: [capturedTelemetryDataId],
+            type: sequelize.QueryTypes.SELECT
+          });
+          return results && results.length > 0 ? String(results[0].organizationId) : 'unknown';
+        } catch (err) {
+          return 'unknown';
+        }
+      };
+
+      const organizationId = await getOrganizationId(capturedTelemetryDataId);
+      metricsManager.incrementCounter('telemetry_ingestion_total', {
+        organizationId: organizationId
+      });
+    } catch (err) {
+      logger.warn('Failed to record telemetry ingestion metric', { error: err.message });
+    }
 
     // Queue notification and rule engine asynchronously (after response sent)
     process.nextTick(async () => {
@@ -255,6 +288,49 @@ const createBatchDataStreams = async (req, res, next) => {
 
     // Process batch operation
     const createdStreams = await DataStream.bulkCreate(preparedStreams);
+    
+    // Record telemetry ingestion metrics
+    try {
+      const getOrganizationId = async (telemetryDataId) => {
+        try {
+          const query = `
+            SELECT a.organizationId
+            FROM TelemetryData td
+            JOIN Sensor s ON td.sensorId = s.id
+            JOIN AreaSensor as_rel ON s.id = as_rel.sensorId
+            JOIN Area a ON as_rel.areaId = a.id
+            WHERE td.id = ?
+            LIMIT 1
+          `;
+          const results = await sequelize.query(query, {
+            replacements: [telemetryDataId],
+            type: sequelize.QueryTypes.SELECT
+          });
+          return results && results.length > 0 ? String(results[0].organizationId) : 'unknown';
+        } catch (err) {
+          return 'unknown';
+        }
+      };
+
+      const uniqueTelemetryIds = Array.from(new Set(preparedStreams.map(s => s.telemetryDataId)));
+      const orgIdPromises = uniqueTelemetryIds.map(id => getOrganizationId(id));
+      const orgIds = await Promise.all(orgIdPromises);
+      const orgIdCounts = {};
+      
+      orgIds.forEach((orgId, idx) => {
+        const telemetryId = uniqueTelemetryIds[idx];
+        const count = preparedStreams.filter(s => s.telemetryDataId === telemetryId).length;
+        orgIdCounts[orgId] = (orgIdCounts[orgId] || 0) + count;
+      });
+
+      Object.entries(orgIdCounts).forEach(([orgId, count]) => {
+        metricsManager.incrementCounter('telemetry_ingestion_total', {
+          organizationId: orgId
+        }, count);
+      });
+    } catch (err) {
+      logger.warn('Failed to record batch telemetry ingestion metrics', { error: err.message });
+    }
     
     // Send response immediately
     res.status(201).json({

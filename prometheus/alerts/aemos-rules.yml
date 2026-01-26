@@ -1,0 +1,105 @@
+groups:
+  - name: aemos_backend_alerts
+    interval: 30s
+    rules:
+      - alert: HighRuleExecutionFailureRate
+        expr: |
+          rate(rule_execution_total{status="failure"}[5m]) / 
+          rate(rule_execution_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High rule execution failure rate"
+          description: "Rule execution failure rate is {{ $value | humanizePercentage }} (threshold: 5%)"
+
+      - alert: SlowRuleExecution
+        expr: |
+          histogram_quantile(0.95, rate(rule_execution_duration_seconds_bucket[5m])) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Slow rule execution detected"
+          description: "P95 rule execution duration is {{ $value }}s (threshold: 5s)"
+
+      - alert: RuleExecutionTimeouts
+        expr: |
+          rate(rule_timeout_total{error_code="RULE_CHAIN_TIMEOUT"}[5m]) > 0.01
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Rule execution timeouts detected"
+          description: "Rule chain timeout rate is {{ $value | humanize }} per second"
+
+      - alert: QueueDepthCritical
+        expr: |
+          rule_engine_queue_total_pending > 50000
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Queue depth critical"
+          description: "Queue has {{ $value }} pending jobs (threshold: 50000)"
+
+      - alert: QueueDepthWarning
+        expr: |
+          rule_engine_queue_total_pending > 10000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Queue depth warning"
+          description: "Queue has {{ $value }} pending jobs (threshold: 10000)"
+
+      - alert: HighHTTPErrorRate
+        expr: |
+          rate(http_requests_total{status_code=~"5.."}[5m]) / 
+          rate(http_requests_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High HTTP error rate"
+          description: "HTTP 5xx error rate is {{ $value | humanizePercentage }} (threshold: 5%)"
+
+      - alert: SlowHTTPRequests
+        expr: |
+          histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Slow HTTP requests"
+          description: "P95 HTTP request duration is {{ $value }}s (threshold: 2s)"
+
+      - alert: DataCollectionTimeouts
+        expr: |
+          rate(rule_timeout_total{error_code="DATA_COLLECTION_TIMEOUT"}[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Data collection timeouts"
+          description: "Data collection timeout rate is {{ $value | humanize }} per second"
+
+      - alert: NoActiveWorkers
+        expr: |
+          rule_engine_workers == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "No active workers"
+          description: "No rule engine workers are active"
+
+      - alert: BackpressureCircuitOpen
+        expr: |
+          rule_engine_backpressure_circuit_state == 2
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Backpressure circuit breaker open"
+          description: "Backpressure circuit breaker is OPEN - events are being rejected"

@@ -16,6 +16,12 @@ const logger = require('../utils/logger');
 const sequelize = require('../config/database');
 const { Sequelize } = require('sequelize');
 const RuleChainIndex = require('../ruleEngine/indexing/RuleChainIndex');
+const { collectWithTimeout, withTimeout } = require('../utils/timeoutUtils');
+const { TimeoutError, ERROR_CODES } = require('../utils/TimeoutError');
+const timeoutMetrics = require('../utils/timeoutMetrics');
+const metricsManager = require('../utils/metricsManager');
+const { validateRuleChainConfig } = require('../utils/uuidValidator');
+const config = require('../config');
 // Ownership check function for middleware
 const getRuleChainForOwnershipCheck = async (id) => {
   try {
@@ -206,7 +212,30 @@ class RuleChainService {
   // RuleChainNode operations
   async createNode(data) {
     try {
-      // Check if a node with the same name exists in the same rule chain
+      let config = data.config;
+      
+      if (config) {
+        if (typeof config === 'string') {
+          try {
+            config = JSON.parse(config);
+          } catch (err) {
+            const error = new Error('Invalid JSON in config field');
+            error.statusCode = 400;
+            throw error;
+          }
+        }
+        
+        const validation = validateRuleChainConfig(config, data.type);
+        if (!validation.valid) {
+          const error = new Error('Invalid rule chain node configuration: one or more UUIDs are invalid');
+          error.statusCode = 400;
+          error.details = validation.errors;
+          throw error;
+        }
+        
+        data.config = typeof data.config === 'string' ? data.config : JSON.stringify(config);
+      }
+      
       const existingNode = await RuleChainNode.findOne({
         where: {
           ruleChainId: data.ruleChainId,
@@ -265,30 +294,79 @@ class RuleChainService {
     try {
       const node = await RuleChainNode.findByPk(id);
       if (!node) {
-        throw new Error('Node not found');
+        const error = new Error('Node not found');
+        error.statusCode = 404;
+        throw error;
       }
 
-      // If name is being updated, check for uniqueness
-      if (data.name && data.name !== node.name) {
-        const existingNode = await RuleChainNode.findOne({
-          where: {
-            ruleChainId: node.ruleChainId,
-            name: data.name,
-            id: { [Sequelize.Op.ne]: id }, // Exclude current node
-          },
-        });
-
-        if (existingNode) {
-          const error = new Error('A node with this name already exists in this rule chain');
-          error.statusCode = 400;
-          throw error;
+      const updateData = {};
+      
+      if (data.config !== undefined) {
+        if (data.config === null) {
+          updateData.config = null;
+        } else {
+          let config = data.config;
+          const originalWasString = typeof config === 'string';
+          
+          if (originalWasString) {
+            try {
+              config = JSON.parse(config);
+            } catch (err) {
+              const error = new Error('Invalid JSON in config field');
+              error.statusCode = 400;
+              throw error;
+            }
+          }
+          
+          const nodeType = data.type || node.type;
+          const validation = validateRuleChainConfig(config, nodeType);
+          if (!validation.valid) {
+            const error = new Error('Invalid rule chain node configuration: one or more UUIDs are invalid');
+            error.statusCode = 400;
+            error.details = validation.errors;
+            throw error;
+          }
+          
+          updateData.config = originalWasString ? data.config : JSON.stringify(config);
         }
       }
 
-      await node.update(data);
-      const updatedNode = await this.findNodeById(id);
-      return updatedNode;
+      if (data.name !== undefined) {
+        if (data.name !== node.name) {
+          const existingNode = await RuleChainNode.findOne({
+            where: {
+              ruleChainId: node.ruleChainId,
+              name: data.name,
+              id: { [Sequelize.Op.ne]: id },
+            },
+          });
+
+          if (existingNode) {
+            const error = new Error('A node with this name already exists in this rule chain');
+            error.statusCode = 400;
+            throw error;
+          }
+        }
+        updateData.name = data.name;
+      }
+
+      if (data.type !== undefined) {
+        updateData.type = data.type;
+      }
+
+      if (data.nextNodeId !== undefined) {
+        updateData.nextNodeId = data.nextNodeId;
+      }
+
+      if (Object.keys(updateData).length === 0) {
+        return node;
+      }
+
+      await node.update(updateData);
+      await node.reload();
+      return node;
     } catch (error) {
+      logger.error('Error in updateNode:', error);
       throw error;
     }
   }
@@ -311,11 +389,16 @@ class RuleChainService {
    * @param {Object} rawData - Object containing arrays of sensor and device data
    * @param {Array} rawData.sensorData - Array of sensor data objects with UUID
    * @param {Array} rawData.deviceData - Array of device data objects with UUID
+   * @param {Object} rawData.meta - Metadata about partial data (optional)
+   * @param {number} timeoutMs - Timeout for rule chain execution (optional)
    */
-  async execute(ruleChainId, rawData) {
-    try {
+  async execute(ruleChainId, rawData, timeoutMs = null) {
+    const timeout = timeoutMs || config.ruleEngine.timeouts.ruleChain;
+    const startTime = Date.now();
+
+    const executeFn = async () => {
       // Transform arrays into maps for efficient lookup
-      const data = this._transformDataToMaps(rawData);
+      let data = this._transformDataToMaps(rawData);
 
       // Get rule chain with nodes
       const ruleChain = await this.findChainById(ruleChainId);
@@ -369,6 +452,15 @@ class RuleChainService {
               condition: config,
             });
 
+            try {
+              metricsManager.incrementCounter('rule_filter_evaluations_total', {
+                ruleChainId: String(ruleChainId),
+                result: actionResult ? 'passed' : 'failed'
+              });
+            } catch (err) {
+              logger.warn('Failed to record filter evaluation metric', { error: err.message });
+            }
+
             if (!actionResult) {
               allFiltersPassed = false;
               break;
@@ -418,6 +510,16 @@ class RuleChainService {
               notificationSent: false, // Will be updated after notification is sent
             });
             actionsExecuted++;
+
+            try {
+              const actionType = config.type || 'device_command';
+              metricsManager.incrementCounter('rule_action_executions_total', {
+                ruleChainId: String(ruleChainId),
+                actionType: String(actionType)
+              });
+            } catch (err) {
+              logger.warn('Failed to record action execution metric', { error: err.message });
+            }
             break;
 
           default:
@@ -456,8 +558,85 @@ class RuleChainService {
           executedNodes: results,
           finalData: data,
         },
+        meta: rawData.meta || {},
       };
+    };
+
+    try {
+      const result = await withTimeout(
+        executeFn(),
+        timeout,
+        ERROR_CODES.RULE_CHAIN_TIMEOUT,
+        {
+          ruleChainId,
+          timeoutMs: timeout,
+          operation: 'rule_chain_execution'
+        }
+      );
+
+      const duration = (Date.now() - startTime) / 1000;
+      const status = result.status || 'success';
+
+      try {
+        metricsManager.observeHistogram('rule_execution_duration_seconds', {
+          status: String(status)
+        }, duration);
+
+        metricsManager.incrementCounter('rule_execution_total', {
+          ruleChainId: String(ruleChainId),
+          status: String(status)
+        });
+
+        metricsManager.setGauge('rule_execution_nodes_executed', {
+          ruleChainId: String(ruleChainId)
+        }, result.summary?.totalNodes || 0);
+      } catch (err) {
+        logger.warn('Failed to record rule execution metrics', { error: err.message });
+      }
+
+      return result;
     } catch (error) {
+      const duration = (Date.now() - startTime) / 1000;
+
+      if (error.isTimeout) {
+        logger.error('Rule chain execution timed out', {
+          ruleChainId,
+          timeoutMs: timeout,
+          duration: duration * 1000,
+          errorCode: error.code
+        });
+
+        timeoutMetrics.recordTimeout(error.code, duration * 1000);
+
+        try {
+          metricsManager.observeHistogram('rule_execution_duration_seconds', {
+            status: 'timeout'
+          }, duration);
+
+          metricsManager.incrementCounter('rule_execution_total', {
+            ruleChainId: String(ruleChainId),
+            status: 'timeout'
+          });
+        } catch (err) {
+          logger.warn('Failed to record timeout metrics', { error: err.message });
+        }
+
+        throw error;
+      }
+
+      try {
+        metricsManager.observeHistogram('rule_execution_duration_seconds', {
+          status: 'failure'
+        }, duration);
+
+        metricsManager.incrementCounter('rule_execution_total', {
+          ruleChainId: String(ruleChainId),
+          status: 'failure'
+        });
+      } catch (err) {
+        logger.warn('Failed to record failure metrics', { error: err.message });
+      }
+
       throw error;
     }
   }
@@ -824,115 +1003,163 @@ class RuleChainService {
   }
 
   /**
-   * Collects latest sensor values based on requirements
+   * Collects latest sensor values based on requirements with timeout
    * @param {Map} sensorReqs - Map of sensor UUIDs to required parameters
-   * @returns {Array} Array of sensor data objects
+   * @param {number} timeoutMs - Timeout in milliseconds
+   * @returns {Promise<{data: Array, timeoutDetails: Object}>} Sensor data and timeout information
    */
-  async _collectSensorData(sensorReqs) {
-    const sensorData = [];
+  async _collectSensorData(sensorReqs, timeoutMs = null) {
+    const timeout = timeoutMs || config.ruleEngine.timeouts.dataCollection;
+    const sourceIds = Array.from(sensorReqs.keys());
 
-    for (const [UUID, parameters] of sensorReqs) {
-      try {
-        const sensor = await Sensor.findOne({ where: { UUID } });
-        if (!sensor) continue;
+    const collectionFn = async () => {
+      const sensorData = [];
 
-        const sensorDataObject = { UUID };
+      for (const [UUID, parameters] of sensorReqs) {
+        try {
+          const sensor = await Sensor.findOne({ where: { UUID } });
+          if (!sensor) continue;
 
-        for (const param of parameters) {
-          const telemetry = await TelemetryData.findOne({
-            where: {
-              sensorId: sensor.id,
-              variableName: param,
-            },
-          });
+          const sensorDataObject = { UUID };
 
-          if (telemetry) {
-            const latestStream = await DataStream.findOne({
-              where: { telemetryDataId: telemetry.id },
-              order: [['recievedAt', 'DESC']],
-              limit: 1,
+          for (const param of parameters) {
+            const telemetry = await TelemetryData.findOne({
+              where: {
+                sensorId: sensor.id,
+                variableName: param,
+              },
             });
 
-            if (latestStream) {
-              // Convert value based on telemetry datatype
-              let value = latestStream.value;
-              let receivedAt = latestStream.recievedAt;
-              switch (telemetry.datatype) {
-                case 'number':
-                  value = Number(value);
-                  break;
-                case 'boolean':
-                  value = value.toLowerCase() === 'true';
-                  break;
-                // String and other types remain as is
+            if (telemetry) {
+              const latestStream = await DataStream.findOne({
+                where: { telemetryDataId: telemetry.id },
+                order: [['recievedAt', 'DESC']],
+                limit: 1,
+              });
+
+              if (latestStream) {
+                let value = latestStream.value;
+                let receivedAt = latestStream.recievedAt;
+                switch (telemetry.datatype) {
+                  case 'number':
+                    value = Number(value);
+                    break;
+                  case 'boolean':
+                    value = value.toLowerCase() === 'true';
+                    break;
+                }
+                sensorDataObject[param] = value;
+                sensorDataObject['timestamp'] = receivedAt;
               }
-              sensorDataObject[param] = value;
-              sensorDataObject['timestamp'] = receivedAt;
             }
           }
-        }
 
-        if (Object.keys(sensorDataObject).length > 1) {
-          // > 1 because UUID is always there
-          sensorData.push(sensorDataObject);
+          if (Object.keys(sensorDataObject).length > 1) {
+            sensorData.push(sensorDataObject);
+          }
+        } catch (error) {
+          logger.error(`Error collecting sensor data for UUID ${UUID}:`, error);
         }
-      } catch (error) {
-        logger.error(`Error collecting sensor data for UUID ${UUID}:`, error);
-        // Continue with next sensor
       }
+
+      return sensorData;
+    };
+
+    const result = await collectWithTimeout(collectionFn, timeout, 'sensor', sourceIds);
+    
+    try {
+      const status = result.timeoutDetails.timedOut ? 'timeout' : 'success';
+      const duration = result.timeoutDetails.duration / 1000;
+      
+      metricsManager.observeHistogram('data_collection_duration_seconds', {
+        type: 'sensor',
+        status: String(status)
+      }, duration);
+
+      metricsManager.incrementCounter('data_collection_total', {
+        type: 'sensor',
+        status: String(status)
+      });
+    } catch (err) {
+      logger.warn('Failed to record sensor data collection metrics', { error: err.message });
     }
 
-    return sensorData;
+    return result;
   }
 
   /**
-   * Collects latest device state values based on requirements
+   * Collects latest device state values based on requirements with timeout
    * @param {Map} deviceReqs - Map of device UUIDs to required parameters
-   * @returns {Array} Array of device data objects
+   * @param {number} timeoutMs - Timeout in milliseconds
+   * @returns {Promise<{data: Array, timeoutDetails: Object}>} Device data and timeout information
    */
-  async _collectDeviceData(deviceReqs) {
-    const deviceData = [];
+  async _collectDeviceData(deviceReqs, timeoutMs = null) {
+    const timeout = timeoutMs || config.ruleEngine.timeouts.dataCollection;
+    const sourceIds = Array.from(deviceReqs.keys());
 
-    for (const [UUID, parameters] of deviceReqs) {
-      try {
-        const device = await Device.findOne({ where: { UUID } });
-        if (!device) continue;
+    const collectionFn = async () => {
+      const deviceData = [];
 
-        const deviceDataObject = { UUID };
+      for (const [UUID, parameters] of deviceReqs) {
+        try {
+          const device = await Device.findOne({ where: { UUID } });
+          if (!device) continue;
 
-        for (const param of parameters) {
-          const state = await DeviceState.findOne({
-            where: {
-              deviceId: device.id,
-              stateName: param,
-            },
-          });
+          const deviceDataObject = { UUID };
 
-          if (state) {
-            const latestInstance = await DeviceStateInstance.findOne({
-              where: { deviceStateId: state.id },
-              order: [['fromTimestamp', 'DESC']],
-              limit: 1,
+          for (const param of parameters) {
+            const state = await DeviceState.findOne({
+              where: {
+                deviceId: device.id,
+                stateName: param,
+              },
             });
 
-            if (latestInstance) {
-              deviceDataObject[param] = latestInstance.value;
-              deviceDataObject['timestamp'] = latestInstance.fromTimestamp;
+            if (state) {
+              const latestInstance = await DeviceStateInstance.findOne({
+                where: { deviceStateId: state.id },
+                order: [['fromTimestamp', 'DESC']],
+                limit: 1,
+              });
+
+              if (latestInstance) {
+                deviceDataObject[param] = latestInstance.value;
+                deviceDataObject['timestamp'] = latestInstance.fromTimestamp;
+              }
             }
           }
-        }
 
-        if (Object.keys(deviceDataObject).length > 1) {
-          // > 1 because UUID is always there
-          deviceData.push(deviceDataObject);
+          if (Object.keys(deviceDataObject).length > 1) {
+            deviceData.push(deviceDataObject);
+          }
+        } catch (error) {
+          logger.error(`Error collecting device data for UUID ${UUID}:`, error);
         }
-      } catch (error) {
-        logger.error(`Error collecting device data for UUID ${UUID}:`, error);
-        // Continue with next device
       }
+
+      return deviceData;
+    };
+
+    const result = await collectWithTimeout(collectionFn, timeout, 'device', sourceIds);
+    
+    try {
+      const status = result.timeoutDetails.timedOut ? 'timeout' : 'success';
+      const duration = result.timeoutDetails.duration / 1000;
+      
+      metricsManager.observeHistogram('data_collection_duration_seconds', {
+        type: 'device',
+        status: String(status)
+      }, duration);
+
+      metricsManager.incrementCounter('data_collection_total', {
+        type: 'device',
+        status: String(status)
+      });
+    } catch (err) {
+      logger.warn('Failed to record device data collection metrics', { error: err.message });
     }
 
-    return deviceData;
+    return result;
   }
 
   /**
@@ -995,19 +1222,92 @@ class RuleChainService {
             }
           }
 
-          // 3. Collect required data
-          const [sensorData, deviceData] = await Promise.all([
-            this._collectSensorData(sensorReqs),
-            this._collectDeviceData(deviceReqs),
+          // 3. Collect required data with timeouts
+          const ruleChainStartTime = Date.now();
+          const dataCollectionTimeout = config.ruleEngine.timeouts.dataCollection;
+          const ruleChainTimeout = config.ruleEngine.timeouts.ruleChain;
+
+          const missingSources = [];
+          const timeoutDetails = {};
+
+          const [sensorResult, deviceResult] = await Promise.all([
+            this._collectSensorData(sensorReqs, dataCollectionTimeout)
+              .catch(err => {
+                if (err.isTimeout) {
+                  const sourceIds = Array.from(sensorReqs.keys());
+                  missingSources.push(...sourceIds.map(id => `sensor:${id}`));
+                  timeoutDetails.sensor = {
+                    timedOut: true,
+                    duration: err.context?.duration || dataCollectionTimeout
+                  };
+                  timeoutMetrics.recordTimeout(err.code, err.context?.duration || dataCollectionTimeout);
+                  logger.warn('Sensor data collection timed out', {
+                    ruleChainId: ruleChain.id,
+                    sensorUUIDs: sourceIds,
+                    timeoutMs: dataCollectionTimeout,
+                    errorCode: err.code
+                  });
+                  return { data: [], timeoutDetails: { timedOut: true, duration: err.context?.duration || dataCollectionTimeout } };
+                }
+                throw err;
+              }),
+            this._collectDeviceData(deviceReqs, dataCollectionTimeout)
+              .catch(err => {
+                if (err.isTimeout) {
+                  const sourceIds = Array.from(deviceReqs.keys());
+                  missingSources.push(...sourceIds.map(id => `device:${id}`));
+                  timeoutDetails.device = {
+                    timedOut: true,
+                    duration: err.context?.duration || dataCollectionTimeout
+                  };
+                  timeoutMetrics.recordTimeout(err.code, err.context?.duration || dataCollectionTimeout);
+                  logger.warn('Device data collection timed out', {
+                    ruleChainId: ruleChain.id,
+                    deviceUUIDs: sourceIds,
+                    timeoutMs: dataCollectionTimeout,
+                    errorCode: err.code
+                  });
+                  return { data: [], timeoutDetails: { timedOut: true, duration: err.context?.duration || dataCollectionTimeout } };
+                }
+                throw err;
+              })
           ]);
 
-          // 4. Execute rule chain with collected data
-          const rawData = {
+          const sensorData = sensorResult.data || sensorResult;
+          const deviceData = deviceResult.data || deviceResult;
+
+          if (sensorResult.timeoutDetails) {
+            timeoutDetails.sensor = sensorResult.timeoutDetails;
+            if (sensorResult.timeoutDetails.timedOut) {
+              const sourceIds = Array.from(sensorReqs.keys());
+              missingSources.push(...sourceIds.map(id => `sensor:${id}`));
+              timeoutMetrics.recordTimeout(ERROR_CODES.DATA_COLLECTION_TIMEOUT, sensorResult.timeoutDetails.duration);
+            }
+          }
+          if (deviceResult.timeoutDetails) {
+            timeoutDetails.device = deviceResult.timeoutDetails;
+            if (deviceResult.timeoutDetails.timedOut) {
+              const sourceIds = Array.from(deviceReqs.keys());
+              missingSources.push(...sourceIds.map(id => `device:${id}`));
+              timeoutMetrics.recordTimeout(ERROR_CODES.DATA_COLLECTION_TIMEOUT, deviceResult.timeoutDetails.duration);
+            }
+          }
+
+          // 4. Build execution context with metadata
+          const executionContext = {
             sensorData,
             deviceData,
+            meta: {
+              partialData: missingSources.length > 0,
+              missingSources,
+              timeoutDetails,
+              executionStart: ruleChainStartTime
+            }
           };
 
-          const executionResult = await this.execute(ruleChain.id, rawData);
+          // 5. Execute rule chain with timeout
+          const remainingTime = ruleChainTimeout - (Date.now() - ruleChainStartTime);
+          const executionResult = await this.execute(ruleChain.id, executionContext, Math.max(remainingTime, 1000));
           results.push({
             ruleChainId: ruleChain.id,
             name: ruleChain.name,
@@ -1066,13 +1366,43 @@ class RuleChainService {
             }
           }
         } catch (error) {
-          results.push({
-            ruleChainId: ruleChain.id,
-            name: ruleChain.name,
-            status: 'error',
-            error: error.message,
-          });
-          // Continue with next rule chain
+          const duration = Date.now() - ruleChainStartTime;
+
+          if (error.isTimeout) {
+            logger.error('Rule chain execution timed out', {
+              ruleChainId: ruleChain.id,
+              ruleChainName: ruleChain.name,
+              timeoutMs: ruleChainTimeout,
+              duration,
+              errorCode: error.code,
+              context: error.context
+            });
+
+            timeoutMetrics.recordTimeout(error.code, duration);
+            results.push({
+              ruleChainId: ruleChain.id,
+              name: ruleChain.name,
+              status: 'timeout',
+              error: error.message,
+              errorCode: error.code,
+              duration
+            });
+          } else {
+            logger.error('Rule chain execution failed', {
+              ruleChainId: ruleChain.id,
+              ruleChainName: ruleChain.name,
+              error: error.message,
+              duration
+            });
+
+            results.push({
+              ruleChainId: ruleChain.id,
+              name: ruleChain.name,
+              status: 'error',
+              error: error.message,
+              duration
+            });
+          }
         }
       }
       /*

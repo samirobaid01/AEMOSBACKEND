@@ -109,7 +109,14 @@ const createNode = async (req, res) => {
       data: node
     });
   } catch (error) {
-    res.status(500).json({
+    if (error.statusCode === 400 && error.details) {
+      return res.status(400).json({
+        status: 'error',
+        message: error.message,
+        validationErrors: error.details
+      });
+    }
+    res.status(error.statusCode || 500).json({
       status: 'error',
       message: error.message
     });
@@ -145,7 +152,14 @@ const updateNode = async (req, res) => {
       data: node
     });
   } catch (error) {
-    res.status(500).json({
+    if (error.statusCode === 400 && error.details) {
+      return res.status(400).json({
+        status: 'error',
+        message: error.message,
+        validationErrors: error.details
+      });
+    }
+    res.status(error.statusCode || 500).json({
       status: 'error',
       message: error.message
     });

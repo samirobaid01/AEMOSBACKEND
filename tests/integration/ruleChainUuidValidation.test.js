@@ -1,11 +1,30 @@
 const request = require('supertest');
-const app = require('../../src/app');
 const { RuleChain, RuleChainNode } = require('../../src/models/initModels');
 const sequelize = require('../../src/config/database');
+const jwt = require('jsonwebtoken');
+const config = require('../../src/config');
+
+jest.mock('../../src/middlewares/auth', () => ({
+  authenticate: (req, res, next) => {
+    req.user = {
+      id: 1,
+      email: 'test@example.com',
+      roleId: 1
+    };
+    next();
+  }
+}));
+
+jest.mock('../../src/middlewares/permission', () => ({
+  checkPermission: () => (req, res, next) => next(),
+  checkResourceOwnership: () => (req, res, next) => next(),
+  checkOrgPermission: () => (req, res, next) => next()
+}));
+
+const app = require('../../src/app');
 
 describe('Rule Chain UUID Validation - Integration Tests', () => {
   let testRuleChain;
-  let authToken;
   let testOrganizationId = 1;
 
   beforeAll(async () => {
@@ -26,10 +45,19 @@ describe('Rule Chain UUID Validation - Integration Tests', () => {
     await sequelize.close();
   });
 
-  describe('POST /api/v1/rulechains/:ruleChainId/nodes', () => {
+  describe('POST /api/v1/rule-chains/nodes', () => {
+    let createdNodes = [];
+
+    afterEach(async () => {
+      if (createdNodes.length > 0) {
+        await RuleChainNode.destroy({ where: { id: createdNodes.map(n => n.id) } });
+        createdNodes = [];
+      }
+    });
+
     test('should create node with valid UUID', async () => {
       const response = await request(app)
-        .post(`/api/v1/rulechains/${testRuleChain.id}/nodes`)
+        .post('/api/v1/rule-chains/nodes')
         .send({
           name: 'Valid Filter Node',
           ruleChainId: testRuleChain.id,
@@ -46,11 +74,15 @@ describe('Rule Chain UUID Validation - Integration Tests', () => {
       expect(response.status).toBe(201);
       expect(response.body.status).toBe('success');
       expect(response.body.data).toBeDefined();
+      
+      if (response.body.data && response.body.data.id) {
+        createdNodes.push(response.body.data);
+      }
     });
 
     test('should reject node with invalid UUID', async () => {
       const response = await request(app)
-        .post(`/api/v1/rulechains/${testRuleChain.id}/nodes`)
+        .post('/api/v1/rule-chains/nodes')
         .send({
           name: 'Invalid Filter Node',
           ruleChainId: testRuleChain.id,
@@ -74,7 +106,7 @@ describe('Rule Chain UUID Validation - Integration Tests', () => {
 
     test('should reject node with invalid device UUID in action', async () => {
       const response = await request(app)
-        .post(`/api/v1/rulechains/${testRuleChain.id}/nodes`)
+        .post('/api/v1/rule-chains/nodes')
         .send({
           name: 'Invalid Action Node',
           ruleChainId: testRuleChain.id,
@@ -96,7 +128,7 @@ describe('Rule Chain UUID Validation - Integration Tests', () => {
 
     test('should create action node with valid device UUID', async () => {
       const response = await request(app)
-        .post(`/api/v1/rulechains/${testRuleChain.id}/nodes`)
+        .post('/api/v1/rule-chains/nodes')
         .send({
           name: 'Valid Action Node',
           ruleChainId: testRuleChain.id,
@@ -112,11 +144,15 @@ describe('Rule Chain UUID Validation - Integration Tests', () => {
 
       expect(response.status).toBe(201);
       expect(response.body.status).toBe('success');
+      
+      if (response.body.data && response.body.data.id) {
+        createdNodes.push(response.body.data);
+      }
     });
 
     test('should reject nested AND expression with invalid UUID', async () => {
       const response = await request(app)
-        .post(`/api/v1/rulechains/${testRuleChain.id}/nodes`)
+        .post('/api/v1/rule-chains/nodes')
         .send({
           name: 'Invalid Nested Expression',
           ruleChainId: testRuleChain.id,
@@ -142,7 +178,7 @@ describe('Rule Chain UUID Validation - Integration Tests', () => {
 
     test('should create node with nested AND expression with valid UUIDs', async () => {
       const response = await request(app)
-        .post(`/api/v1/rulechains/${testRuleChain.id}/nodes`)
+        .post('/api/v1/rule-chains/nodes')
         .send({
           name: 'Valid Nested Expression',
           ruleChainId: testRuleChain.id,
@@ -170,10 +206,14 @@ describe('Rule Chain UUID Validation - Integration Tests', () => {
 
       expect(response.status).toBe(201);
       expect(response.body.status).toBe('success');
+      
+      if (response.body.data && response.body.data.id) {
+        createdNodes.push(response.body.data);
+      }
     });
   });
 
-  describe('PUT /api/v1/rulechains/nodes/:id', () => {
+  describe('PATCH /api/v1/rule-chains/nodes/:id', () => {
     let testNode;
 
     beforeEach(async () => {
@@ -200,7 +240,7 @@ describe('Rule Chain UUID Validation - Integration Tests', () => {
 
     test('should update node with valid UUID', async () => {
       const response = await request(app)
-        .put(`/api/v1/rulechains/nodes/${testNode.id}`)
+        .patch(`/api/v1/rule-chains/nodes/${testNode.id}`)
         .send({
           config: JSON.stringify({
             sourceType: 'sensor',
@@ -211,13 +251,16 @@ describe('Rule Chain UUID Validation - Integration Tests', () => {
           })
         });
 
+      if (response.status !== 200) {
+        console.error('Update failed:', response.status, response.body);
+      }
       expect(response.status).toBe(200);
       expect(response.body.status).toBe('success');
     });
 
     test('should reject update with invalid UUID', async () => {
       const response = await request(app)
-        .put(`/api/v1/rulechains/nodes/${testNode.id}`)
+        .patch(`/api/v1/rule-chains/nodes/${testNode.id}`)
         .send({
           config: JSON.stringify({
             sourceType: 'sensor',
@@ -235,11 +278,14 @@ describe('Rule Chain UUID Validation - Integration Tests', () => {
 
     test('should allow setting config to null', async () => {
       const response = await request(app)
-        .put(`/api/v1/rulechains/nodes/${testNode.id}`)
+        .patch(`/api/v1/rule-chains/nodes/${testNode.id}`)
         .send({
           config: null
         });
 
+      if (response.status !== 200) {
+        console.error('Update with null config failed:', response.status, response.body);
+      }
       expect(response.status).toBe(200);
       expect(response.body.status).toBe('success');
     });

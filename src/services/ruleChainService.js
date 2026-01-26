@@ -294,16 +294,21 @@ class RuleChainService {
     try {
       const node = await RuleChainNode.findByPk(id);
       if (!node) {
-        throw new Error('Node not found');
+        const error = new Error('Node not found');
+        error.statusCode = 404;
+        throw error;
       }
 
-      let config = data.config;
+      const updateData = {};
       
-      if (config !== undefined) {
-        if (config === null) {
-          data.config = null;
+      if (data.config !== undefined) {
+        if (data.config === null) {
+          updateData.config = null;
         } else {
-          if (typeof config === 'string') {
+          let config = data.config;
+          const originalWasString = typeof config === 'string';
+          
+          if (originalWasString) {
             try {
               config = JSON.parse(config);
             } catch (err) {
@@ -322,30 +327,46 @@ class RuleChainService {
             throw error;
           }
           
-          data.config = typeof data.config === 'string' ? data.config : JSON.stringify(config);
+          updateData.config = originalWasString ? data.config : JSON.stringify(config);
         }
       }
 
-      if (data.name && data.name !== node.name) {
-        const existingNode = await RuleChainNode.findOne({
-          where: {
-            ruleChainId: node.ruleChainId,
-            name: data.name,
-            id: { [Sequelize.Op.ne]: id },
-          },
-        });
+      if (data.name !== undefined) {
+        if (data.name !== node.name) {
+          const existingNode = await RuleChainNode.findOne({
+            where: {
+              ruleChainId: node.ruleChainId,
+              name: data.name,
+              id: { [Sequelize.Op.ne]: id },
+            },
+          });
 
-        if (existingNode) {
-          const error = new Error('A node with this name already exists in this rule chain');
-          error.statusCode = 400;
-          throw error;
+          if (existingNode) {
+            const error = new Error('A node with this name already exists in this rule chain');
+            error.statusCode = 400;
+            throw error;
+          }
         }
+        updateData.name = data.name;
       }
 
-      await node.update(data);
-      const updatedNode = await this.findNodeById(id);
-      return updatedNode;
+      if (data.type !== undefined) {
+        updateData.type = data.type;
+      }
+
+      if (data.nextNodeId !== undefined) {
+        updateData.nextNodeId = data.nextNodeId;
+      }
+
+      if (Object.keys(updateData).length === 0) {
+        return node;
+      }
+
+      await node.update(updateData);
+      await node.reload();
+      return node;
     } catch (error) {
+      logger.error('Error in updateNode:', error);
       throw error;
     }
   }

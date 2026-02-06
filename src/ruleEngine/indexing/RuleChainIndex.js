@@ -246,6 +246,36 @@ const invalidateDevice = async (deviceId) => {
   return invalidateOriginator('device', deviceId);
 };
 
+const normalizeConfig = (configValue) => {
+  if (!configValue) return null;
+  if (typeof configValue === 'object') return configValue;
+  try {
+    return JSON.parse(configValue);
+  } catch (error) {
+    return null;
+  }
+};
+
+const extractSensorUuidsFromConfig = (configValue) => {
+  const config = normalizeConfig(configValue);
+  if (!config) return [];
+
+  const uuidCandidates = [];
+  if (config.UUID) uuidCandidates.push(config.UUID);
+  if (config.uuid) uuidCandidates.push(config.uuid);
+  if (config.sensorUUID) uuidCandidates.push(config.sensorUUID);
+
+  if (config.type === 'AND' && Array.isArray(config.expressions)) {
+    config.expressions.forEach((expr) => {
+      if (expr.UUID) uuidCandidates.push(expr.UUID);
+      if (expr.uuid) uuidCandidates.push(expr.uuid);
+      if (expr.sensorUUID) uuidCandidates.push(expr.sensorUUID);
+    });
+  }
+
+  return uuidCandidates.filter(Boolean);
+};
+
 module.exports = {
   getRuleChainsForOriginator,
   buildIndexForOriginator,
@@ -255,5 +285,6 @@ module.exports = {
   buildIndexForSensor,
   buildIndexForDevice,
   invalidateSensor,
-  invalidateDevice
+  invalidateDevice,
+  extractSensorUuidsFromConfig
 };

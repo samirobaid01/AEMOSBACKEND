@@ -413,11 +413,12 @@ class RuleChainService {
         nodesMap[node.id] = node;
       });
 
-      // Start with first node
+      const MAX_EXECUTION_STEPS = 1000;
+      const visitedNodeIds = new Set();
+
       let currentNode = ruleChain.nodes[0];
       const results = [];
 
-      // Initialize nodeResults for categorized access
       const nodeResults = {
         filters: [],
         transformations: [],
@@ -427,9 +428,29 @@ class RuleChainService {
       let allFiltersPassed = true;
       let transformationsCount = 0;
       let actionsExecuted = 0;
+      let abortedReason = null;
 
-      // Execute nodes sequentially
       while (currentNode) {
+        if (visitedNodeIds.has(currentNode.id)) {
+          logger.error('Circular rule chain detected; stopping execution', {
+            ruleChainId,
+            nodeId: currentNode.id,
+            nodeName: currentNode.name,
+            visitedCount: visitedNodeIds.size
+          });
+          abortedReason = 'circular';
+          break;
+        }
+        visitedNodeIds.add(currentNode.id);
+        if (visitedNodeIds.size > MAX_EXECUTION_STEPS) {
+          logger.error('Rule chain exceeded max execution steps; stopping', {
+            ruleChainId,
+            maxSteps: MAX_EXECUTION_STEPS
+          });
+          abortedReason = 'max_steps';
+          break;
+        }
+
         const nodeType = currentNode.type;
         const config = currentNode.config || '{}';
         let actionResult;
@@ -498,7 +519,7 @@ class RuleChainService {
 
             // Add to categorized results with enhanced device information
             nodeResults.actions.push({
-              nodeId: currentNode.commandid,
+              nodeId: currentNode.id,
               status: actionResult.status,
               SourceType: {
                 deviceUuid: config.command.deviceUuid,
@@ -538,19 +559,18 @@ class RuleChainService {
         currentNode = currentNode.nextNodeId ? nodesMap[currentNode.nextNodeId] : null;
       }
 
-      // Create summary information
       const summary = {
         totalNodes: results.length,
         filtersPassed: allFiltersPassed,
         transformationsApplied: transformationsCount,
         actionsExecuted: actionsExecuted,
+        abortedReason: abortedReason || undefined,
       };
 
-      // Return both new format and preserve original execution details
       return {
         ruleChainId,
         name: ruleChain.name,
-        status: 'success',
+        status: abortedReason ? 'aborted' : 'success',
         summary,
         nodeResults,
         executionDetails: {
@@ -558,7 +578,7 @@ class RuleChainService {
           executedNodes: results,
           finalData: data,
         },
-        meta: rawData.meta || {},
+        meta: { ...(rawData.meta || {}), abortedReason: abortedReason || undefined },
       };
     };
 
@@ -1169,6 +1189,7 @@ class RuleChainService {
    * @returns {Promise} Results of rule chain executions
    */
   async trigger(sensorUUID = null, variableNames = []) {
+    const RULE_CHAIN_TRIGGER_BATCH_SIZE = 50;
     try {
       const ruleChainIds = await RuleChainIndex.getRuleChainsForSensor(sensorUUID, variableNames);
       if (!ruleChainIds.length) {
@@ -1176,23 +1197,24 @@ class RuleChainService {
         return;
       }
 
-      // Find all applicable rule chains
-      const ruleChains = await RuleChain.findAll({
-        where: { id: ruleChainIds },
-        include: [
-          {
-            model: RuleChainNode,
-            as: 'nodes',
-            required: false
-          },
-        ],
-      });
-      
-      console.log('Total rule chains to execute:', ruleChains.length);
-
-      // Process each rule chain
       const results = [];
-      for (const ruleChain of ruleChains) {
+      for (let i = 0; i < ruleChainIds.length; i += RULE_CHAIN_TRIGGER_BATCH_SIZE) {
+        const chunk = ruleChainIds.slice(i, i + RULE_CHAIN_TRIGGER_BATCH_SIZE);
+        const ruleChains = await RuleChain.findAll({
+          where: { id: chunk },
+          include: [
+            {
+              model: RuleChainNode,
+              as: 'nodes',
+              required: false
+            },
+          ],
+        });
+        if (i === 0) {
+          console.log('Total rule chains to execute:', ruleChainIds.length);
+        }
+
+        for (const ruleChain of ruleChains) {
         try {
           // Skip if no nodes
           if (!ruleChain.nodes || ruleChain.nodes.length === 0) {
@@ -1357,8 +1379,17 @@ class RuleChainService {
                 }
               } catch (error) {
                 logger.error(
-                  `Error processing device state change for action ${action.nodeId}:`,
-                  error
+                  'Error processing device state change for action',
+                  {
+                    nodeId: action.nodeId,
+                    ruleChainId: ruleChain.id,
+                    ruleChainName: ruleChain.name,
+                    deviceUuid: action.command?.deviceUuid,
+                    stateName: action.command?.stateName,
+                    value: action.command?.value,
+                    error: error.message,
+                    statusCode: error.statusCode
+                  }
                 );
                 action.notificationSent = false;
                 action.error = error.message;
@@ -1403,6 +1434,7 @@ class RuleChainService {
               duration
             });
           }
+        }
         }
       }
       /*
@@ -1473,7 +1505,7 @@ class RuleChainService {
       });
       */
       return {
-        totalRuleChains: ruleChains.length,
+        totalRuleChains: ruleChainIds.length,
         results,
       };
     } catch (error) {

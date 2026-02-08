@@ -117,12 +117,12 @@ const initAssociations = () => {
 const initModels = async () => {
   try {
     initAssociations();
-    RuleChain.addHook('afterCreate', (ruleChain) => IndexManager.rebuildIndexForRuleChain(ruleChain.id));
-    RuleChain.addHook('afterUpdate', (ruleChain) => IndexManager.rebuildIndexForRuleChain(ruleChain.id));
-    RuleChain.addHook('afterDestroy', (ruleChain) => IndexManager.rebuildIndexForRuleChain(ruleChain.id));
-    RuleChainNode.addHook('afterCreate', (node) => IndexManager.rebuildIndexForRuleChain(node.ruleChainId));
-    RuleChainNode.addHook('afterUpdate', (node) => IndexManager.rebuildIndexForRuleChain(node.ruleChainId));
-    RuleChainNode.addHook('afterDestroy', (node) => IndexManager.rebuildIndexForRuleChain(node.ruleChainId));
+    RuleChain.addHook('afterCreate', (ruleChain) => IndexManager.scheduleRebuildForRuleChain(ruleChain.id));
+    RuleChain.addHook('afterUpdate', (ruleChain) => IndexManager.scheduleRebuildForRuleChain(ruleChain.id));
+    RuleChain.addHook('afterDestroy', (ruleChain) => IndexManager.scheduleRebuildForRuleChain(ruleChain.id));
+    RuleChainNode.addHook('afterCreate', (node) => IndexManager.scheduleRebuildForRuleChain(node.ruleChainId));
+    RuleChainNode.addHook('afterUpdate', (node) => IndexManager.scheduleRebuildForRuleChain(node.ruleChainId));
+    RuleChainNode.addHook('afterDestroy', (node) => IndexManager.scheduleRebuildForRuleChain(node.ruleChainId));
     console.log('Models initialized successfully');
   } catch (error) {
     console.error('Error initializing models:', error);

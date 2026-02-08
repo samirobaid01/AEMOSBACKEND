@@ -1,4 +1,5 @@
 const notificationBridgeService = require('../../src/services/notificationBridgeService');
+const redisConnection = require('../../src/config/redis');
 
 jest.mock('ioredis', () => {
   const EventEmitter = require('events');
@@ -7,6 +8,8 @@ jest.mock('ioredis', () => {
     constructor() {
       super();
       this.published = [];
+      this.status = 'ready';
+      this.connect = jest.fn(() => Promise.resolve());
     }
 
     async publish(channel, message) {
@@ -112,17 +115,85 @@ describe('NotificationBridgeService', () => {
   });
 
   describe('initialization', () => {
-    it('should initialize publisher successfully', () => {
+    beforeEach(() => {
+      notificationBridgeService.publisher = null;
+      notificationBridgeService.subscriber = null;
+      notificationBridgeService.isPublisher = false;
+      notificationBridgeService.isSubscriber = false;
+    });
+
+    it('should initialize publisher successfully and reuse shared connection', () => {
       notificationBridgeService.initializePublisher();
       expect(notificationBridgeService.isPublisher).toBe(true);
       expect(notificationBridgeService.publisher).toBeDefined();
+      expect(notificationBridgeService.publisher).toBe(redisConnection);
     });
 
-    it('should initialize subscriber successfully', () => {
+    it('should initialize subscriber successfully with separate connection', () => {
       const handler = jest.fn();
       notificationBridgeService.initializeSubscriber(handler);
       expect(notificationBridgeService.isSubscriber).toBe(true);
       expect(notificationBridgeService.subscriber).toBeDefined();
+      expect(notificationBridgeService.subscriber).not.toBe(redisConnection);
+    });
+
+    it('should prevent dual-role misuse (cannot initialize publisher when subscriber active)', () => {
+      const handler = jest.fn();
+      notificationBridgeService.initializeSubscriber(handler);
+      expect(notificationBridgeService.isSubscriber).toBe(true);
+
+      expect(() => {
+        notificationBridgeService.initializePublisher();
+      }).toThrow('Cannot initialize publisher on subscriber instance');
+    });
+
+    it('should be idempotent (multiple initialization calls are safe)', () => {
+      notificationBridgeService.initializePublisher();
+      const firstPublisher = notificationBridgeService.publisher;
+      
+      notificationBridgeService.initializePublisher();
+      expect(notificationBridgeService.publisher).toBe(firstPublisher);
+    });
+
+    it('should only call connect() when status is "end"', () => {
+      const originalStatus = redisConnection.status;
+      redisConnection.connect.mockClear();
+      redisConnection.connect.mockResolvedValue();
+      
+      Object.defineProperty(redisConnection, 'status', {
+        value: 'end',
+        writable: true,
+        configurable: true
+      });
+
+      notificationBridgeService.initializePublisher();
+      expect(redisConnection.connect).toHaveBeenCalled();
+
+      Object.defineProperty(redisConnection, 'status', {
+        value: originalStatus,
+        writable: true,
+        configurable: true
+      });
+    });
+
+    it('should not call connect() when status is "ready"', () => {
+      const originalStatus = redisConnection.status;
+      redisConnection.connect.mockClear();
+      
+      Object.defineProperty(redisConnection, 'status', {
+        value: 'ready',
+        writable: true,
+        configurable: true
+      });
+
+      notificationBridgeService.initializePublisher();
+      expect(redisConnection.connect).not.toHaveBeenCalled();
+
+      Object.defineProperty(redisConnection, 'status', {
+        value: originalStatus,
+        writable: true,
+        configurable: true
+      });
     });
 
     it.skip('should call handler when message received (tested in integration)', () => {
@@ -131,13 +202,49 @@ describe('NotificationBridgeService', () => {
   });
 
   describe('shutdown', () => {
-    it('should disconnect publisher and subscriber', () => {
+    beforeEach(() => {
+      notificationBridgeService.publisher = null;
+      notificationBridgeService.subscriber = null;
+      notificationBridgeService.isPublisher = false;
+      notificationBridgeService.isSubscriber = false;
+    });
+
+    it('should not disconnect shared connection (publisher reuses redisConnection)', () => {
+      redisConnection.connect.mockResolvedValue();
       notificationBridgeService.initializePublisher();
-      const mockDisconnect = jest.spyOn(notificationBridgeService.publisher, 'disconnect');
+      const disconnectSpy = jest.spyOn(redisConnection, 'disconnect');
       
       notificationBridgeService.shutdown();
       
-      expect(mockDisconnect).toHaveBeenCalled();
+      expect(disconnectSpy).not.toHaveBeenCalled();
+      expect(notificationBridgeService.publisher).toBeNull();
+      expect(notificationBridgeService.isPublisher).toBe(false);
+      
+      disconnectSpy.mockRestore();
+    });
+
+    it('should disconnect subscriber connection', () => {
+      const handler = jest.fn();
+      notificationBridgeService.initializeSubscriber(handler);
+      const disconnectSpy = jest.spyOn(notificationBridgeService.subscriber, 'disconnect');
+      
+      notificationBridgeService.shutdown();
+      
+      expect(disconnectSpy).toHaveBeenCalled();
+      expect(notificationBridgeService.subscriber).toBeNull();
+      expect(notificationBridgeService.isSubscriber).toBe(false);
+    });
+
+    it('should handle shutdown when publisher is separate connection (backward compatibility)', () => {
+      const mockPublisher = {
+        disconnect: jest.fn()
+      };
+      notificationBridgeService.publisher = mockPublisher;
+      notificationBridgeService.isPublisher = true;
+      
+      notificationBridgeService.shutdown();
+      
+      expect(mockPublisher.disconnect).toHaveBeenCalled();
       expect(notificationBridgeService.publisher).toBeNull();
       expect(notificationBridgeService.isPublisher).toBe(false);
     });

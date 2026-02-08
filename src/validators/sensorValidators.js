@@ -9,17 +9,19 @@ const sensorSchema = {
     description: Joi.string().allow('', null),
     status: Joi.string().valid(...allowedStatuses).default('pending'),
     uuid: Joi.string().uuid().allow('', null),
-    organizationId: Joi.number().integer().required()
+   // organizationId: Joi.number().integer().required(),
+    areaId: Joi.number().integer().allow(null)
   }),
   update: Joi.object({
     name: Joi.string().max(50),
     description: Joi.string().allow('', null),
     status: Joi.string().valid(...allowedStatuses).default('pending'),
     uuid: Joi.string().uuid().allow('', null),
-    organizationId: Joi.number().integer().required()
+    //organizationId: Joi.number().integer().required(),
+    areaId: Joi.number().integer().allow(null)
   }),
   query: Joi.object({
-    organizationId: Joi.number().integer().required()
+    organizationId: Joi.number().integer().allow(null)
   })
 };
 

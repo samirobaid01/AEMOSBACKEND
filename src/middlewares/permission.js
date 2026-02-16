@@ -118,6 +118,9 @@ const checkResourceOwnership = (resourceFetcher, idParam = 'id') => {
       if (!resourceId) {
         throw new ApiError(400, `Resource ID (${idParam}) is required`);
       }
+      if (String(resourceId).startsWith(':')) {
+        throw new ApiError(400, `Invalid resource ID: URL appears to contain the placeholder "${resourceId}" instead of the actual ID. Replace it with the real resource ID (e.g. numeric or UUID).`);
+      }
 
       console.log(`Checking ownership for resource id=${resourceId} in organization ${organizationId} by user ${req.user.id}`);
 

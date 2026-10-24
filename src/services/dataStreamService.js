@@ -24,7 +24,9 @@ const getDataStreamRangeByTelemetryId = async (telemetryDataId, from, to, opts =
 };
 
 const createDataStream = async (dataStreamData) => {
-  return tsRepo.insert([dataStreamData]);
+  const rows = await tsRepo.insert([dataStreamData]);
+  // bulkCreate returns an array; controller expects a single instance
+  return Array.isArray(rows) ? rows[0] : rows;
 };
 
 const createBatchDataStreams = async (dataStreams) => {

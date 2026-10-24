@@ -127,12 +127,13 @@ rule_engine_backpressure_threshold_warning ${backpressureStatus.thresholds.warni
 rule_engine_backpressure_threshold_critical ${backpressureStatus.thresholds.critical}
 
 ${timeoutMetrics.getPrometheusMetrics()}
-
-${metricsManager.getPrometheusMetrics()}
 `.trim();
 
-    res.set('Content-Type', 'text/plain; version=0.0.4');
-    res.send(prometheusMetrics);
+    // prom-client metrics (application + default Node.js process metrics)
+    const promMetrics = await metricsManager.getPrometheusMetrics();
+
+    res.set('Content-Type', metricsManager.getContentType());
+    res.send(`${prometheusMetrics}\n\n${promMetrics}`);
   } catch (error) {
     logger.error(`Failed to generate Prometheus metrics: ${error.message}`);
     res.status(500).send('# Error generating metrics');

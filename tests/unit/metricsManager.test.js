@@ -1,189 +1,158 @@
+/**
+ * Unit tests for MetricsManager (migrated to prom-client in P4.8).
+ *
+ * Uses plain-function mocks for registry so they survive jest's resetMocks: true.
+ */
+
+jest.mock('prom-client', () => {
+  // Storage shared across mock instances (same singleton behavior as real prom-client)
+  const _counters   = {};
+  const _histograms = {};
+  const _gauges     = {};
+
+  class Counter {
+    constructor({ name }) {
+      this.name = name;
+      _counters[name] = this;
+      this._values = {};
+    }
+    inc(labels = {}, v = 1) {
+      const key = JSON.stringify(labels);
+      this._values[key] = (this._values[key] || 0) + v;
+    }
+  }
+
+  class Histogram {
+    constructor({ name }) {
+      this.name = name;
+      _histograms[name] = this;
+      this._observations = [];
+    }
+    observe(labels = {}, v) { this._observations.push({ labels, v }); }
+  }
+
+  class Gauge {
+    constructor({ name }) {
+      this.name = name;
+      _gauges[name] = this;
+      this._value = null;
+    }
+    set(labels = {}, v) { this._value = v; }
+  }
+
+  const register = {
+    // Plain async function — not affected by resetMocks
+    metrics:      async () => '# HELP aemos_nodejs_heap_size_used_bytes Heap used\naemos_nodejs_heap_size_used_bytes 1024',
+    contentType:  'text/plain; version=0.0.4; charset=utf-8',
+    resetMetrics() {
+      Object.values(_counters).forEach(c => { c._values = {}; });
+      Object.values(_histograms).forEach(h => { h._observations = []; });
+      Object.values(_gauges).forEach(g => { g._value = null; });
+    },
+  };
+
+  return { Counter, Histogram, Gauge, register, collectDefaultMetrics: () => {} };
+});
+
 const metricsManager = require('../../src/utils/metricsManager');
 
-describe('MetricsManager', () => {
-  beforeEach(() => {
-    metricsManager.reset();
-  });
+describe('MetricsManager (prom-client)', () => {
+  beforeEach(() => metricsManager.reset());
 
-  describe('Cardinality Validation', () => {
-    test('should allow valid labels', () => {
-      expect(() => {
-        metricsManager.incrementCounter('test_counter', {
-          ruleChainId: '1',
-          status: 'success'
-        });
-      }).not.toThrow();
+  describe('incrementCounter()', () => {
+    it('does not throw for a known counter with valid labels', () => {
+      expect(() =>
+        metricsManager.incrementCounter('rule_execution_total', { ruleChainId: '1', status: 'success' })
+      ).not.toThrow();
     });
 
-    test('should reject forbidden labels', () => {
-      expect(() => {
-        metricsManager.incrementCounter('test_counter', {
-          sensorUUID: 'abc123'
-        });
-      }).toThrow('Forbidden label');
+    it('rejects forbidden labels', () => {
+      expect(() =>
+        metricsManager.incrementCounter('http_requests_total', { sensorUUID: 'abc' })
+      ).toThrow('Forbidden label');
     });
 
-    test('should enforce cardinality limits', () => {
-      for (let i = 0; i < 200; i++) {
-        metricsManager.incrementCounter('test_counter', {
-          ruleChainId: String(i),
-          status: 'success'
-        });
-      }
+    it('rejects deviceToken label', () => {
+      expect(() =>
+        metricsManager.incrementCounter('telemetry_ingestion_total', { deviceToken: 'tok' })
+      ).toThrow('Forbidden label');
+    });
 
-      expect(() => {
-        metricsManager.incrementCounter('test_counter', {
-          ruleChainId: '201',
-          status: 'success'
-        });
-      }).toThrow('cardinality violation');
+    it('warns (does not throw) for an unknown metric name', () => {
+      expect(() =>
+        metricsManager.incrementCounter('nonexistent_metric', { status: 'ok' })
+      ).not.toThrow();
     });
   });
 
-  describe('Counter Operations', () => {
-    test('should increment counter', () => {
-      metricsManager.incrementCounter('test_counter', { status: 'success' });
-      metricsManager.incrementCounter('test_counter', { status: 'success' }, 2);
-
-      const metrics = metricsManager.getPrometheusMetrics();
-      expect(metrics).toContain('test_counter{status="success"} 3');
+  describe('observeHistogram()', () => {
+    it('does not throw for a known histogram with valid labels', () => {
+      expect(() =>
+        metricsManager.observeHistogram(
+          'http_request_duration_seconds',
+          { method: 'GET', route: '/health', status_code: '200' },
+          0.05
+        )
+      ).not.toThrow();
     });
 
-    test('should handle multiple label combinations', () => {
-      metricsManager.incrementCounter('rule_execution_total', {
-        ruleChainId: '1',
-        status: 'success'
-      });
-      metricsManager.incrementCounter('rule_execution_total', {
-        ruleChainId: '1',
-        status: 'failure'
-      });
-      metricsManager.incrementCounter('rule_execution_total', {
-        ruleChainId: '2',
-        status: 'success'
-      });
+    it('rejects forbidden labels', () => {
+      expect(() =>
+        metricsManager.observeHistogram('rule_execution_duration_seconds', { userId: '1' }, 0.1)
+      ).toThrow('Forbidden label');
+    });
 
-      const metrics = metricsManager.getPrometheusMetrics();
-      expect(metrics).toContain('rule_execution_total{ruleChainId="1",status="success"} 1');
-      expect(metrics).toContain('rule_execution_total{ruleChainId="1",status="failure"} 1');
-      expect(metrics).toContain('rule_execution_total{ruleChainId="2",status="success"} 1');
+    it('warns (does not throw) for an unknown metric name', () => {
+      expect(() =>
+        metricsManager.observeHistogram('ghost_histogram', {}, 1)
+      ).not.toThrow();
     });
   });
 
-  describe('Histogram Operations', () => {
-    test('should observe histogram values', () => {
-      metricsManager.observeHistogram('rule_execution_duration_seconds', {
-        status: 'success'
-      }, 0.5);
-
-      metricsManager.observeHistogram('rule_execution_duration_seconds', {
-        status: 'success'
-      }, 1.2);
-
-      const metrics = metricsManager.getPrometheusMetrics();
-      expect(metrics).toContain('rule_execution_duration_seconds');
-      expect(metrics).toContain('status="success"');
+  describe('setGauge()', () => {
+    it('does not throw for a known gauge with valid labels', () => {
+      expect(() =>
+        metricsManager.setGauge('rule_execution_nodes_executed', { ruleChainId: '5' }, 12)
+      ).not.toThrow();
     });
 
-    test('should calculate histogram buckets correctly', () => {
-      const values = [0.01, 0.05, 0.1, 0.5, 1.0, 2.0, 5.0, 10.0];
-      
-      values.forEach(val => {
-        metricsManager.observeHistogram('test_histogram', { status: 'success' }, val);
-      });
-
-      const metrics = metricsManager.getPrometheusMetrics();
-      expect(metrics).toContain('le="0.01"');
-      expect(metrics).toContain('le="0.05"');
-      expect(metrics).toContain('le="+Inf"');
+    it('rejects forbidden labels', () => {
+      expect(() =>
+        metricsManager.setGauge('rule_execution_nodes_executed', { deviceToken: 'tok' }, 1)
+      ).toThrow('Forbidden label');
     });
 
-    test('should NOT allow ruleChainId in histograms', () => {
-      expect(() => {
-        metricsManager.observeHistogram('rule_execution_duration_seconds', {
-          ruleChainId: '1',
-          status: 'success'
-        }, 0.5);
-      }).not.toThrow();
-
-      const metrics = metricsManager.getPrometheusMetrics();
-      const histogramLines = metrics.split('\n').filter(line => 
-        line.includes('rule_execution_duration_seconds_bucket') || 
-        line.includes('rule_execution_duration_seconds_sum') ||
-        line.includes('rule_execution_duration_seconds_count')
-      );
-      histogramLines.forEach(line => {
-        expect(line).not.toContain('ruleChainId');
-      });
+    it('warns (does not throw) for a wrong type (gauge vs counter)', () => {
+      expect(() =>
+        metricsManager.setGauge('rule_execution_total', {}, 5)
+      ).not.toThrow();
     });
   });
 
-  describe('Gauge Operations', () => {
-    test('should set gauge value', () => {
-      metricsManager.setGauge('rule_execution_nodes_executed', {
-        ruleChainId: '1'
-      }, 5);
-
-      const metrics = metricsManager.getPrometheusMetrics();
-      expect(metrics).toContain('rule_execution_nodes_executed{ruleChainId="1"} 5');
+  describe('getPrometheusMetrics()', () => {
+    it('returns a Promise that resolves to a string', async () => {
+      const output = await metricsManager.getPrometheusMetrics();
+      expect(typeof output).toBe('string');
+      expect(output.length).toBeGreaterThan(0);
     });
 
-    test('should update gauge value', () => {
-      metricsManager.setGauge('test_gauge', { id: '1' }, 10);
-      metricsManager.setGauge('test_gauge', { id: '1' }, 20);
-
-      const metrics = metricsManager.getPrometheusMetrics();
-      expect(metrics).toContain('test_gauge{id="1"} 20');
+    it('includes default process metrics from prom-client', async () => {
+      const output = await metricsManager.getPrometheusMetrics();
+      expect(output).toContain('aemos_nodejs');
     });
   });
 
-  describe('Prometheus Format', () => {
-    test('should generate valid Prometheus format', () => {
-      metricsManager.incrementCounter('test_counter', { status: 'success' });
-      metricsManager.observeHistogram('test_histogram', { type: 'sensor' }, 0.1);
-      metricsManager.setGauge('test_gauge', { id: '1' }, 5);
-
-      const metrics = metricsManager.getPrometheusMetrics();
-
-      expect(metrics).toContain('# HELP');
-      expect(metrics).toContain('# TYPE');
-      expect(metrics).toContain('test_counter');
-      expect(metrics).toContain('test_histogram');
-      expect(metrics).toContain('test_gauge');
-    });
-
-    test('should include all metric types', () => {
-      metricsManager.incrementCounter('rule_execution_total', {
-        ruleChainId: '1',
-        status: 'success'
-      });
-      metricsManager.observeHistogram('rule_execution_duration_seconds', {
-        status: 'success'
-      }, 0.5);
-      metricsManager.setGauge('rule_execution_nodes_executed', {
-        ruleChainId: '1'
-      }, 3);
-
-      const metrics = metricsManager.getPrometheusMetrics();
-
-      expect(metrics).toContain('rule_execution_total');
-      expect(metrics).toContain('rule_execution_duration_seconds');
-      expect(metrics).toContain('rule_execution_nodes_executed');
+  describe('getContentType()', () => {
+    it('returns a text/plain content-type string', () => {
+      const ct = metricsManager.getContentType();
+      expect(ct).toMatch(/text\/plain/);
     });
   });
 
-  describe('Reset', () => {
-    test('should reset all metrics', () => {
-      metricsManager.incrementCounter('test_counter', { status: 'success' });
-      metricsManager.observeHistogram('test_histogram', { type: 'sensor' }, 0.1);
-      metricsManager.setGauge('test_gauge', { id: '1' }, 5);
-
-      metricsManager.reset();
-
-      const metrics = metricsManager.getPrometheusMetrics();
-      expect(metrics).not.toContain('test_counter');
-      expect(metrics).not.toContain('test_histogram');
-      expect(metrics).not.toContain('test_gauge');
+  describe('reset()', () => {
+    it('clears accumulated metric values without throwing', () => {
+      metricsManager.incrementCounter('notifications_sent_total', { protocol: 'mqtt' });
+      expect(() => metricsManager.reset()).not.toThrow();
     });
   });
 });

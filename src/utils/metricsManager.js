@@ -1,347 +1,138 @@
+const promClient = require('prom-client');
 const logger = require('./logger');
 
-const MAX_LABEL_CARDINALITY = {
-  ruleChainId: 200,
-  organizationId: 100,
-  status: 5,
-  type: 5,
-  method: 10,
-  route: 50,
-  status_code: 20,
-  protocol: 5,
-  result: 3,
-  actionType: 10
+// Collect default Node.js process metrics (memory, CPU, GC, event-loop lag, etc.)
+promClient.collectDefaultMetrics({ prefix: 'aemos_' });
+
+const registry = promClient.register;
+
+// Pre-declare all known application metrics with their label sets.
+// prom-client requires label names to be fixed at creation time.
+const metrics = {
+  // --- counters ---
+  rule_execution_total: new promClient.Counter({
+    name: 'rule_execution_total',
+    help: 'Total number of rule chain executions',
+    labelNames: ['ruleChainId', 'status'],
+  }),
+  rule_filter_evaluations_total: new promClient.Counter({
+    name: 'rule_filter_evaluations_total',
+    help: 'Total filter evaluations',
+    labelNames: ['ruleChainId', 'result'],
+  }),
+  rule_action_executions_total: new promClient.Counter({
+    name: 'rule_action_executions_total',
+    help: 'Total action executions',
+    labelNames: ['ruleChainId', 'actionType'],
+  }),
+  data_collection_total: new promClient.Counter({
+    name: 'data_collection_total',
+    help: 'Total data collection attempts',
+    labelNames: ['type', 'status'],
+  }),
+  http_requests_total: new promClient.Counter({
+    name: 'http_requests_total',
+    help: 'Total HTTP requests',
+    labelNames: ['method', 'route', 'status_code'],
+  }),
+  telemetry_ingestion_total: new promClient.Counter({
+    name: 'telemetry_ingestion_total',
+    help: 'Total telemetry data points ingested',
+    labelNames: ['status'],
+  }),
+  notifications_sent_total: new promClient.Counter({
+    name: 'notifications_sent_total',
+    help: 'Total notifications sent',
+    labelNames: ['protocol'],
+  }),
+  device_state_changes_total: new promClient.Counter({
+    name: 'device_state_changes_total',
+    help: 'Total device state changes',
+    labelNames: ['status'],
+  }),
+
+  // --- histograms ---
+  rule_execution_duration_seconds: new promClient.Histogram({
+    name: 'rule_execution_duration_seconds',
+    help: 'Duration of rule chain execution',
+    labelNames: ['status'],
+    buckets: [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 2, 5, 10],
+  }),
+  data_collection_duration_seconds: new promClient.Histogram({
+    name: 'data_collection_duration_seconds',
+    help: 'Duration of sensor/device data collection',
+    labelNames: ['type', 'status'],
+    buckets: [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1],
+  }),
+  http_request_duration_seconds: new promClient.Histogram({
+    name: 'http_request_duration_seconds',
+    help: 'Duration of HTTP requests',
+    labelNames: ['method', 'route', 'status_code'],
+    buckets: [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 2],
+  }),
+
+  // --- gauges ---
+  rule_execution_nodes_executed: new promClient.Gauge({
+    name: 'rule_execution_nodes_executed',
+    help: 'Number of nodes executed per rule chain',
+    labelNames: ['ruleChainId'],
+  }),
 };
 
 const FORBIDDEN_LABELS = new Set([
-  'sensorUUID',
-  'deviceUUID',
-  'userId',
-  'telemetryDataId',
-  'jobId',
-  'requestId',
-  'sessionId',
-  'deviceToken'
+  'sensorUUID', 'deviceUUID', 'userId',
+  'telemetryDataId', 'jobId', 'requestId', 'sessionId', 'deviceToken',
 ]);
 
 class MetricsManager {
-  constructor() {
-    this.counters = new Map();
-    this.histograms = new Map();
-    this.gauges = new Map();
-    this.labelValueSets = new Map();
-    this.initializeLabelTracking();
-  }
-
-  initializeLabelTracking() {
-    Object.keys(MAX_LABEL_CARDINALITY).forEach(labelName => {
-      this.labelValueSets.set(labelName, new Set());
-    });
-  }
-
-  validateLabel(labelName, labelValue) {
-    if (FORBIDDEN_LABELS.has(labelName)) {
-      throw new Error(`Forbidden label '${labelName}' detected. Use structured logging for per-device/per-sensor metrics.`);
-    }
-
-    const maxCardinality = MAX_LABEL_CARDINALITY[labelName];
-    if (maxCardinality) {
-      const valueSet = this.labelValueSets.get(labelName);
-      if (!valueSet.has(labelValue)) {
-        if (valueSet.size >= maxCardinality) {
-          throw new Error(
-            `Metric cardinality violation: label '${labelName}' exceeds maximum of ${maxCardinality} unique values. ` +
-            `Current values: ${Array.from(valueSet).join(', ')}`
-          );
-        }
-        valueSet.add(labelValue);
+  _validateLabels(labels) {
+    for (const name of Object.keys(labels)) {
+      if (FORBIDDEN_LABELS.has(name)) {
+        throw new Error(`Forbidden label '${name}' detected.`);
       }
     }
-  }
-
-  validateLabels(labels) {
-    Object.entries(labels).forEach(([labelName, labelValue]) => {
-      this.validateLabel(labelName, String(labelValue));
-    });
-  }
-
-  getCounterKey(name, labels) {
-    const labelStr = Object.entries(labels)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([k, v]) => `${k}="${v}"`)
-      .join(',');
-    return `${name}{${labelStr}}`;
   }
 
   incrementCounter(name, labels = {}, value = 1) {
-    this.validateLabels(labels);
-    const key = this.getCounterKey(name, labels);
-    const current = this.counters.get(key) || 0;
-    this.counters.set(key, current + value);
+    this._validateLabels(labels);
+    const m = metrics[name];
+    if (!m || !(m instanceof promClient.Counter)) {
+      logger.warn(`incrementCounter: unknown or wrong-type metric "${name}"`);
+      return;
+    }
+    m.inc(labels, value);
   }
 
   observeHistogram(name, labels = {}, value) {
-    this.validateLabels(labels);
-    const key = this.getCounterKey(name, labels);
-    
-    if (!this.histograms.has(key)) {
-      let buckets = [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 2, 5, 10];
-      
-      if (name.includes('http_request')) {
-        buckets = [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 2];
-      } else if (name.includes('data_collection')) {
-        buckets = [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1];
-      }
-      
-      this.histograms.set(key, {
-        buckets,
-        values: [],
-        sum: 0,
-        count: 0
-      });
+    this._validateLabels(labels);
+    const m = metrics[name];
+    if (!m || !(m instanceof promClient.Histogram)) {
+      logger.warn(`observeHistogram: unknown or wrong-type metric "${name}"`);
+      return;
     }
-
-    const histogram = this.histograms.get(key);
-    histogram.values.push(value);
-    histogram.sum += value;
-    histogram.count += 1;
-
-    if (histogram.values.length > 10000) {
-      histogram.values.shift();
-    }
+    m.observe(labels, value);
   }
 
   setGauge(name, labels = {}, value) {
-    this.validateLabels(labels);
-    const key = this.getCounterKey(name, labels);
-    this.gauges.set(key, value);
+    this._validateLabels(labels);
+    const m = metrics[name];
+    if (!m || !(m instanceof promClient.Gauge)) {
+      logger.warn(`setGauge: unknown or wrong-type metric "${name}"`);
+      return;
+    }
+    m.set(labels, value);
   }
 
-  getHistogramBuckets(histogram, buckets) {
-    const result = {};
-    buckets.forEach(bucket => {
-      result[`le_${bucket}`] = histogram.values.filter(v => v <= bucket).length;
-    });
-    result['le_inf'] = histogram.values.length;
-    return result;
+  async getPrometheusMetrics() {
+    return registry.metrics();
   }
 
-  getPrometheusMetrics() {
-    const lines = [];
-    const processedMetrics = new Set();
-
-    const outputHistogram = (metricName, helpText, filterLabels = []) => {
-      if (processedMetrics.has(metricName)) return;
-      processedMetrics.add(metricName);
-
-      const histograms = Array.from(this.histograms.entries())
-        .filter(([key]) => key.startsWith(metricName));
-      
-      if (histograms.length === 0) return;
-
-      lines.push(`# HELP ${metricName} ${helpText}`);
-      lines.push(`# TYPE ${metricName} histogram`);
-      
-      histograms.forEach(([key, histogram]) => {
-        const labels = this.extractLabels(key);
-        
-        const filteredLabels = { ...labels };
-        filterLabels.forEach(label => delete filteredLabels[label]);
-        
-        const labelStr = Object.entries(filteredLabels)
-          .sort(([a], [b]) => a.localeCompare(b))
-          .map(([k, v]) => `${k}="${v}"`)
-          .join(',');
-        
-        const labelPrefix = labelStr ? `{${labelStr}}` : '';
-        const buckets = this.getHistogramBuckets(histogram, histogram.buckets);
-        histogram.buckets.forEach(bucket => {
-          if (labelPrefix) {
-            lines.push(`${metricName}_bucket${labelPrefix},le="${bucket}"} ${buckets[`le_${bucket}`]}`);
-          } else {
-            lines.push(`${metricName}_bucket{le="${bucket}"} ${buckets[`le_${bucket}`]}`);
-          }
-        });
-        if (labelPrefix) {
-          lines.push(`${metricName}_bucket${labelPrefix},le="+Inf"} ${buckets.le_inf}`);
-          lines.push(`${metricName}_sum${labelPrefix} ${histogram.sum.toFixed(3)}`);
-          lines.push(`${metricName}_count${labelPrefix} ${histogram.count}`);
-        } else {
-          lines.push(`${metricName}_bucket{le="+Inf"} ${buckets.le_inf}`);
-          lines.push(`${metricName}_sum ${histogram.sum.toFixed(3)}`);
-          lines.push(`${metricName}_count ${histogram.count}`);
-        }
-      });
-    };
-
-    const outputCounter = (metricName, helpText) => {
-      if (processedMetrics.has(metricName)) return;
-      processedMetrics.add(metricName);
-
-      const counters = Array.from(this.counters.entries())
-        .filter(([key]) => key.startsWith(metricName));
-      
-      if (counters.length === 0) return;
-
-      lines.push(`# HELP ${metricName} ${helpText}`);
-      lines.push(`# TYPE ${metricName} counter`);
-      
-      counters.forEach(([key, value]) => {
-        lines.push(`${key} ${value}`);
-      });
-    };
-
-    const outputGauge = (metricName, helpText) => {
-      if (processedMetrics.has(metricName)) return;
-      processedMetrics.add(metricName);
-
-      const gauges = Array.from(this.gauges.entries())
-        .filter(([key]) => key.startsWith(metricName));
-      
-      if (gauges.length === 0) return;
-
-      lines.push(`# HELP ${metricName} ${helpText}`);
-      lines.push(`# TYPE ${metricName} gauge`);
-      
-      gauges.forEach(([key, value]) => {
-        lines.push(`${key} ${value}`);
-      });
-    };
-
-    outputHistogram('rule_execution_duration_seconds', 'Duration of rule chain execution (system-wide)', ['ruleChainId']);
-
-    outputCounter('rule_execution_total', 'Total number of rule chain executions');
-    outputGauge('rule_execution_nodes_executed', 'Number of nodes executed per rule chain');
-    outputCounter('rule_filter_evaluations_total', 'Total filter evaluations');
-    outputCounter('rule_action_executions_total', 'Total action executions');
-    outputHistogram('data_collection_duration_seconds', 'Duration of sensor/device data collection');
-    outputCounter('data_collection_total', 'Total data collection attempts');
-    outputHistogram('http_request_duration_seconds', 'Duration of HTTP requests');
-    outputCounter('http_requests_total', 'Total HTTP requests');
-    outputCounter('telemetry_ingestion_total', 'Total telemetry data points ingested');
-    outputCounter('notifications_sent_total', 'Total notifications sent');
-    outputCounter('device_state_changes_total', 'Total device state changes');
-
-    const remainingCounters = Array.from(this.counters.entries())
-      .filter(([key]) => !processedMetrics.has(key.split('{')[0]));
-    
-    if (remainingCounters.length > 0) {
-      const metricGroups = new Map();
-      remainingCounters.forEach(([key, value]) => {
-        const metricName = key.split('{')[0];
-        if (!metricGroups.has(metricName)) {
-          metricGroups.set(metricName, []);
-        }
-        metricGroups.get(metricName).push([key, value]);
-      });
-
-      metricGroups.forEach((entries, metricName) => {
-        lines.push(`# HELP ${metricName} Custom counter metric`);
-        lines.push(`# TYPE ${metricName} counter`);
-        entries.forEach(([key, value]) => {
-          lines.push(`${key} ${value}`);
-        });
-        lines.push('');
-      });
-    }
-
-    const remainingHistograms = Array.from(this.histograms.entries())
-      .filter(([key]) => !processedMetrics.has(key.split('{')[0]));
-    
-    if (remainingHistograms.length > 0) {
-      const metricGroups = new Map();
-      remainingHistograms.forEach(([key, histogram]) => {
-        const metricName = key.split('{')[0];
-        if (!metricGroups.has(metricName)) {
-          metricGroups.set(metricName, []);
-        }
-        metricGroups.get(metricName).push([key, histogram]);
-      });
-
-      metricGroups.forEach((entries, metricName) => {
-        lines.push(`# HELP ${metricName} Custom histogram metric`);
-        lines.push(`# TYPE ${metricName} histogram`);
-        entries.forEach(([key, histogram]) => {
-          const labels = this.extractLabels(key);
-          const filteredLabels = { ...labels };
-          delete filteredLabels.ruleChainId;
-          
-          const labelStr = Object.entries(filteredLabels)
-            .sort(([a], [b]) => a.localeCompare(b))
-            .map(([k, v]) => `${k}="${v}"`)
-            .join(',');
-          
-          const labelPrefix = labelStr ? `{${labelStr}}` : '';
-          const buckets = this.getHistogramBuckets(histogram, histogram.buckets);
-          histogram.buckets.forEach(bucket => {
-            if (labelPrefix) {
-              lines.push(`${metricName}_bucket${labelPrefix},le="${bucket}"} ${buckets[`le_${bucket}`]}`);
-            } else {
-              lines.push(`${metricName}_bucket{le="${bucket}"} ${buckets[`le_${bucket}`]}`);
-            }
-          });
-          if (labelPrefix) {
-            lines.push(`${metricName}_bucket${labelPrefix},le="+Inf"} ${buckets.le_inf}`);
-          } else {
-            lines.push(`${metricName}_bucket{le="+Inf"} ${buckets.le_inf}`);
-          }
-          if (labelPrefix) {
-            lines.push(`${metricName}_sum${labelPrefix} ${histogram.sum.toFixed(3)}`);
-            lines.push(`${metricName}_count${labelPrefix} ${histogram.count}`);
-          } else {
-            lines.push(`${metricName}_sum ${histogram.sum.toFixed(3)}`);
-            lines.push(`${metricName}_count ${histogram.count}`);
-          }
-        });
-        lines.push('');
-      });
-    }
-
-    const remainingGauges = Array.from(this.gauges.entries())
-      .filter(([key]) => !processedMetrics.has(key.split('{')[0]));
-    
-    if (remainingGauges.length > 0) {
-      const metricGroups = new Map();
-      remainingGauges.forEach(([key, value]) => {
-        const metricName = key.split('{')[0];
-        if (!metricGroups.has(metricName)) {
-          metricGroups.set(metricName, []);
-        }
-        metricGroups.get(metricName).push([key, value]);
-      });
-
-      metricGroups.forEach((entries, metricName) => {
-        lines.push(`# HELP ${metricName} Custom gauge metric`);
-        lines.push(`# TYPE ${metricName} gauge`);
-        entries.forEach(([key, value]) => {
-          lines.push(`${key} ${value}`);
-        });
-        lines.push('');
-      });
-    }
-
-    return lines.join('\n').replace(/\n\n\n+/g, '\n\n').trim();
-  }
-
-  extractLabels(key) {
-    const match = key.match(/\{([^}]+)\}/);
-    if (!match) return {};
-    
-    const labels = {};
-    match[1].split(',').forEach(pair => {
-      const [name, value] = pair.split('=');
-      if (name && value) {
-        labels[name.trim()] = value.trim().replace(/"/g, '');
-      }
-    });
-    return labels;
+  getContentType() {
+    return registry.contentType;
   }
 
   reset() {
-    this.counters.clear();
-    this.histograms.clear();
-    this.gauges.clear();
-    this.initializeLabelTracking();
+    registry.resetMetrics();
   }
 }
 

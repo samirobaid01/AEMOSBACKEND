@@ -4,6 +4,7 @@ const sequelize = require('../config/database');
 const redisConnection = require('../config/redis');
 const { getQueueMetrics } = require('../ruleEngine/core/RuleEngineQueue');
 const backpressureManager = require('../services/backpressureManager');
+const tsRepo = require('../repositories/timeseries/TimeSeriesRepositoryFactory');
 const logger = require('../utils/logger');
 
 router.get('/', async (req, res) => {
@@ -91,6 +92,15 @@ router.get('/', async (req, res) => {
       error: error.message
     };
     logger.error(`Queue health check failed: ${error.message}`);
+  }
+
+  try {
+    const tsHealth = await tsRepo.healthCheck();
+    healthCheck.services.timeseries = { status: 'healthy', ...tsHealth };
+  } catch (error) {
+    healthCheck.services.timeseries = { status: 'unhealthy', error: error.message };
+    if (healthCheck.status === 'healthy') healthCheck.status = 'degraded';
+    logger.error(`Timeseries health check failed: ${error.message}`);
   }
 
   healthCheck.services.application = {

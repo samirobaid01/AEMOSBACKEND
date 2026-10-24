@@ -16,6 +16,7 @@ const reportRoutes = require('./reportRoutes');
 const ruleChainRoutes = require('./ruleChainRoutes');
 const metricsRoutes = require('./metricsRoutes');
 const healthRoutes = require('./healthRoutes');
+const systemConfigRoutes = require('./systemConfigRoutes');
 const sequelize = require('../config/database');
 
 const router = express.Router();
@@ -1272,6 +1273,7 @@ router.use('/permissions', permissionRoutes);
 router.use('/user-roles', userRoleRoutes);
 router.use('/reports', reportRoutes);
 router.use('/rule-chains', ruleChainRoutes);
+router.use('/system/config', systemConfigRoutes);
 
 // Handle undefined routes
 router.all('*', (req, res) => {

@@ -20,11 +20,11 @@
 | Sprint | Theme | Effort | Impact | Priority |
 |--------|-------|--------|--------|----------|
 | **P3** | Security hardening | 3 days | Eliminate critical security gaps | 🔴 Critical |
-| **P4** | Data layer evolution | 2 weeks | Handle 100× current telemetry volume | 🟠 High |
-| **P5** | Protocol & messaging scale | 3 weeks | 100,000 events/sec | 🟠 High |
+| **P4** | Pluggable data layer (MySQL / TimescaleDB / InfluxDB) | 2 weeks | Client-selectable storage; 10–100× throughput | 🟠 High |
+| **P5** | Protocol & messaging scale + elastic compute | 3 weeks | 100K events/sec; scale-to-zero workers at low load | 🟠 High |
 | **P6** | Platform services | 6 weeks | Full IoT device lifecycle | 🟡 Medium |
 | **P7** | Analytics & intelligence | 6 weeks | Aquaponics-specific ML + reporting | 🟡 Medium |
-| **P8** | Enterprise | Ongoing | SaaS, multi-region, compliance | 🟢 Planned |
+| **P8** | Enterprise (elastic profiles, KEDA, scale-to-zero) | Ongoing | 10M+ events/sec; pay-for-what-you-use at every tier | 🟢 Planned |
 
 ---
 
@@ -252,16 +252,52 @@ DB_POOL_MAX=30    # Production recommendation
 
 ---
 
-# 🟠 P4: Data Layer Evolution
+# 🟠 P4: Pluggable Data Layer
 
 ## Executive Summary
 
-**Sprint Goal**: Decouple time-series telemetry from MySQL so the platform can absorb 10× the current write volume without data layer changes downstream.  
+**Sprint Goal**: Replace the hardwired MySQL-only telemetry path with a pluggable adapter architecture — inspired by ThingsBoard's `DATABASE_TS_TYPE` (sql | cassandra | timescale) and EMQX's Data Bridge model. Clients choose their own time-series backend from an Admin dashboard setting. The relational layer (Organization, Device, Sensor, Rule, User, Area models) stays on MySQL unchanged.
+
+**Inspiration**:
+- **ThingsBoard**: two-tier model — PostgreSQL always holds entities; `DATABASE_TS_TYPE: sql | cassandra | timescale` selects time-series storage independently.
+- **EMQX Data Bridge**: rule-engine SQL query routes each message to a configured sink adapter (Redis, MySQL, PostgreSQL, Kafka, InfluxDB).
+- **AWS IoT Core**: Rules Engine fans out to DynamoDB (hot), Timestream (analytics), S3 (cold archive) — each endpoint independently configurable.
+
 **Total Effort**: 2 weeks  
 **Priority**: 🟠 High  
 **Dependencies**: P3 complete
 
-**Throughput after P4**: ~10,000 events/sec
+**Throughput after P4**:
+- MySQL adapter (default, no new infra): ~10,000 events/sec
+- TimescaleDB adapter: ~50,000–100,000 events/sec
+- InfluxDB v2 adapter: ~50,000–630,000 events/sec (vendor benchmarks)
+
+---
+
+## Architecture Overview
+
+```
+ Protocol Layer  (HTTP / MQTT / CoAP)
+        │ normalized telemetry
+        ▼
+ TimeSeriesRepository  (interface)
+ insert() · queryLatest() · queryRange() · deleteOlderThan() · healthCheck()
+        │
+        │  TIMESERIES_BACKEND env var  ──────────────────┐
+        │  (or SystemConfig DB row)                       │
+        ▼                                                 │
+ ┌──────────────┐  ┌──────────────────┐  ┌──────────────────┐
+ │ MySQL        │  │ TimescaleDB      │  │ InfluxDB v2       │
+ │ Adapter      │  │ Adapter          │  │ Adapter           │
+ │ (default)    │  │ hypertable +     │  │ Line Protocol     │
+ │ no new infra │  │ time_bucket()    │  │ /api/v2/write     │
+ └──────────────┘  └──────────────────┘  └──────────────────┘
+
+ Relational tier (MySQL, unchanged in all configurations):
+   Organization · Device · Sensor · Rule · User · Area · RuleChain · ...
+```
+
+The `DataStream` (telemetry) and `DeviceStateInstance` (device state history) tables move to the configured adapter. All other 19 Sequelize models remain on MySQL with no changes.
 
 ---
 
@@ -269,123 +305,388 @@ DB_POOL_MAX=30    # Production recommendation
 
 | # | Issue | Effort | Impact | Status |
 |---|-------|--------|--------|--------|
-| 4.1 | Introduce TimescaleDB (PostgreSQL) for telemetry | 5 days | Primary scale enabler | ☐ |
-| 4.2 | Migrate MySQL → PostgreSQL for relational data | 3 days | Consolidate on single engine | ☐ |
-| 4.3 | Add Socket.io Redis adapter | 0.5 days | Multi-instance socket events | ☐ |
-| 4.4 | Redis Sentinel / HA | 1 day | Eliminate Redis SPOF | ☐ |
-| 4.5 | Data retention policies | 1 day | Prevent unbounded DataStream growth | ☐ |
-| 4.6 | prom-client migration | 1 day | Process/GC metrics, real histograms | ☐ |
+| 4.1 | `TimeSeriesRepository` interface + factory | 1 day | Foundation for all adapters | ☐ |
+| 4.2 | `MySQLTimeSeriesAdapter` | 0.5 days | Default adapter — zero new infra | ☐ |
+| 4.3 | `TimescaleDBAdapter` | 3 days | 5–10× write throughput; SQL + time_bucket() | ☐ |
+| 4.4 | `InfluxDBv2Adapter` | 2 days | Standalone time-series; schemaless; SaaS-friendly | ☐ |
+| 4.5 | `SystemConfig` model + admin selection API | 1 day | Dashboard-driven adapter selection | ☐ |
+| 4.6 | Socket.io Redis adapter | 0.5 days | Multi-instance socket events | ☐ |
+| 4.7 | Redis Sentinel / HA | 1 day | Eliminate Redis SPOF | ☐ |
+| 4.8 | prom-client migration | 1 day | Process/GC metrics, real histograms | ☐ |
 
 ---
 
-## 🎫 Issue 4.1: TimescaleDB for Telemetry
+## 🎫 Issue 4.1: TimeSeriesRepository Interface + Factory
 
 ### Problem Statement
 
-`DataStream` is stored in MySQL with no partitioning. At 1,000 events/sec the table grows by 86 million rows per day. "Latest value per telemetry variable" queries (used by the real-time dashboard) require `ORDER BY receivedAt DESC LIMIT 1` which degrades as the table grows.
+`dataStreamService.js` calls Sequelize/MySQL directly. Any storage engine change requires rewriting service logic. A repository interface decouples *what to store* from *where to store it* — the same pattern ThingsBoard uses to swap Cassandra, PostgreSQL, and TimescaleDB behind a common DAO interface.
 
-TimescaleDB is a PostgreSQL extension that provides:
-- Automatic time-based partitioning (hypertables)
-- Efficient time-range queries and `time_bucket` aggregation
-- Built-in retention and downsampling policies
-- Full SQL compatibility — the existing Sequelize queries continue to work
+### Interface Contract
+
+```javascript
+// src/repositories/timeseries/TimeSeriesRepository.js
+class TimeSeriesRepository {
+  async insert(rows) { throw new Error('Not implemented'); }
+  async queryLatest(telemetryDataId) { throw new Error('Not implemented'); }
+  async queryRange(telemetryDataId, from, to, opts = {}) { throw new Error('Not implemented'); }
+  async deleteOlderThan(days) { throw new Error('Not implemented'); }
+  async healthCheck() { throw new Error('Not implemented'); }
+}
+module.exports = TimeSeriesRepository;
+```
+
+### Factory (adapter selection at boot)
+
+```javascript
+// src/repositories/timeseries/TimeSeriesRepositoryFactory.js
+const BACKEND = process.env.TIMESERIES_BACKEND || 'mysql';
+const adapters = {
+  mysql:     () => require('./adapters/MySQLTimeSeriesAdapter'),
+  timescale: () => require('./adapters/TimescaleDBAdapter'),
+  influx:    () => require('./adapters/InfluxDBAdapter'),
+};
+if (!adapters[BACKEND]) {
+  throw new Error(`Unknown TIMESERIES_BACKEND: "${BACKEND}". Valid: mysql | timescale | influx`);
+}
+module.exports = new (adapters[BACKEND]())();
+```
+
+Services import the singleton — never a specific adapter:
+```javascript
+const tsRepo = require('../repositories/timeseries/TimeSeriesRepositoryFactory');
+await tsRepo.insert(rows);   // works regardless of which backend is active
+```
 
 ### Acceptance Criteria
 
-- [ ] **AC1**: `DataStream` table migrated to TimescaleDB hypertable, partitioned by `receivedAt` (chunk interval: 1 day).
-- [ ] **AC2**: All existing `DataStream` writes and reads continue to work via Sequelize (no API change).
-- [ ] **AC3**: Retention policy: keep 90 days of raw data; continuous aggregate to 1-minute buckets retained 2 years.
-- [ ] **AC4**: Dual-write period: new DataStream rows write to both MySQL and TimescaleDB during migration; cut over read path once validated.
-- [ ] **AC5**: Dashboard Redis write-through (Phase 2 of real-time dashboard plan) integrated at the same time.
-- [ ] **AC6**: Load test: sustain 5,000 writes/sec for 10 minutes without latency degradation.
-
-### Technical Approach
-
-**Step 1: Add TimescaleDB PostgreSQL connection** (`src/config/timescaledb.js`):
-```javascript
-const { Sequelize } = require('sequelize');
-module.exports = new Sequelize(
-  process.env.TSDB_NAME || 'aemos_timeseries',
-  process.env.TSDB_USER,
-  process.env.TSDB_PASSWORD,
-  {
-    host: process.env.TSDB_HOST,
-    port: parseInt(process.env.TSDB_PORT || '5432', 10),
-    dialect: 'postgres',
-    pool: { max: 20, min: 2, acquire: 60000, idle: 10000 },
-    logging: false,
-  }
-);
-```
-
-**Step 2: Define DataStream model on TimescaleDB**:
-```javascript
-// src/models/timeseries/DataStream.ts
-// Same fields as MySQL DataStream; hypertable DDL run at migration:
-// SELECT create_hypertable('DataStream', 'receivedAt');
-// SELECT add_retention_policy('DataStream', INTERVAL '90 days');
-```
-
-**Step 3: Dual-write in `dataStreamService.js`**:
-```javascript
-async function create(data) {
-  const [mysqlRow] = await Promise.allSettled([
-    DataStreamMySQL.create(data),
-    DataStreamTimescale.create(data),
-  ]);
-  return mysqlRow.value; // Return MySQL result during migration
-}
-```
-
-**Step 4: Cut over read path** once TimescaleDB has 7 days of data and query latency is verified.
+- [ ] **AC1**: Interface and factory created; unknown `TIMESERIES_BACKEND` value throws at startup.
+- [ ] **AC2**: `dataStreamService.js` and `deviceStateInstanceService.js` refactored to call `tsRepo.*` instead of Sequelize directly.
+- [ ] **AC3**: `GET /api/v1/health` response includes `{ timeseries_backend: "mysql" }` from `tsRepo.healthCheck()`.
+- [ ] **AC4**: `TIMESERIES_BACKEND` added to `.env.example` and `PRODUCTION-DEPLOYMENT.md`.
 
 ### Environment Variables
 
 ```bash
+TIMESERIES_BACKEND=mysql   # mysql | timescale | influx  (default: mysql)
+```
+
+---
+
+## 🎫 Issue 4.2: MySQLTimeSeriesAdapter
+
+### Problem Statement
+
+The default adapter wraps the existing `DataStream` Sequelize model so zero infrastructure changes are needed for clients who stay on MySQL. This is the reference implementation all other adapters must match.
+
+### Technical Approach
+
+```javascript
+// src/repositories/timeseries/adapters/MySQLTimeSeriesAdapter.js
+const TimeSeriesRepository = require('../TimeSeriesRepository');
+const { DataStream } = require('../../models/initModels');
+const { Op } = require('sequelize');
+
+class MySQLTimeSeriesAdapter extends TimeSeriesRepository {
+  async insert(rows) {
+    return DataStream.bulkCreate(rows);
+  }
+  async queryLatest(telemetryDataId) {
+    return DataStream.findOne({
+      where: { telemetryDataId },
+      order: [['receivedAt', 'DESC']],
+    });
+  }
+  async queryRange(telemetryDataId, from, to, { limit = 1000 } = {}) {
+    return DataStream.findAll({
+      where: { telemetryDataId, receivedAt: { [Op.between]: [from, to] } },
+      order: [['receivedAt', 'ASC']],
+      limit,
+    });
+  }
+  async deleteOlderThan(days) {
+    const cutoff = new Date(Date.now() - days * 86400_000);
+    return DataStream.destroy({ where: { receivedAt: { [Op.lt]: cutoff } } });
+  }
+  async healthCheck() {
+    await DataStream.findOne({ limit: 1 });
+    return { ok: true };
+  }
+}
+module.exports = MySQLTimeSeriesAdapter;
+```
+
+### Acceptance Criteria
+
+- [ ] **AC1**: All existing `DataStream` integration tests pass unchanged through the new adapter.
+- [ ] **AC2**: `bulkCreate` used so batch writes use a single INSERT instead of N individual calls.
+- [ ] **AC3**: `deleteOlderThan` respects `DATA_RETENTION_DAYS` env var (default 90).
+
+---
+
+## 🎫 Issue 4.3: TimescaleDBAdapter
+
+### Problem Statement
+
+Clients who provision PostgreSQL + TimescaleDB gain automatic time-based partitioning (hypertables), native `time_bucket()` aggregation, built-in retention policies, and 5–10× better write throughput over MySQL for append-heavy telemetry. Setting `TIMESERIES_BACKEND=timescale` enables it with no code changes to any service.
+
+### Hypertable Setup (run once on the TimescaleDB instance)
+
+```sql
+CREATE TABLE datastream (
+  id                BIGSERIAL,
+  telemetry_data_id UUID             NOT NULL,
+  value             DOUBLE PRECISION,
+  received_at       TIMESTAMPTZ      NOT NULL
+);
+SELECT create_hypertable('datastream', 'received_at', chunk_time_interval => INTERVAL '1 day');
+SELECT add_retention_policy('datastream', INTERVAL '90 days');
+
+-- 1-minute continuous aggregate (kept 2 years):
+CREATE MATERIALIZED VIEW datastream_1m
+WITH (timescaledb.continuous) AS
+  SELECT time_bucket('1 minute', received_at) AS bucket,
+         telemetry_data_id,
+         AVG(value) AS avg_value, COUNT(*) AS count
+  FROM datastream
+  GROUP BY bucket, telemetry_data_id;
+SELECT add_continuous_aggregate_policy('datastream_1m',
+  start_offset => INTERVAL '1 day', end_offset => INTERVAL '1 minute',
+  schedule_interval => INTERVAL '1 minute');
+```
+
+### Technical Approach
+
+```javascript
+// src/repositories/timeseries/adapters/TimescaleDBAdapter.js
+const TimeSeriesRepository = require('../TimeSeriesRepository');
+const { Pool } = require('pg');
+
+const pool = new Pool({
+  host: process.env.TSDB_HOST || 'localhost',
+  port: parseInt(process.env.TSDB_PORT || '5432', 10),
+  database: process.env.TSDB_NAME || 'aemos_timeseries',
+  user: process.env.TSDB_USER,
+  password: process.env.TSDB_PASSWORD,
+  max: parseInt(process.env.TSDB_POOL_MAX || '20', 10),
+});
+
+class TimescaleDBAdapter extends TimeSeriesRepository {
+  async insert(rows) {
+    // Single parameterised bulk INSERT — not N individual calls
+    const vals = rows.map((_, i) =>
+      `($${i*3+1}, $${i*3+2}, $${i*3+3})`).join(',');
+    const params = rows.flatMap(r => [r.telemetryDataId, r.value, r.receivedAt]);
+    await pool.query(
+      `INSERT INTO datastream (telemetry_data_id, value, received_at) VALUES ${vals}`,
+      params
+    );
+  }
+  async queryLatest(telemetryDataId) {
+    const { rows } = await pool.query(
+      `SELECT * FROM datastream WHERE telemetry_data_id = $1
+       ORDER BY received_at DESC LIMIT 1`, [telemetryDataId]);
+    return rows[0] || null;
+  }
+  async queryRange(telemetryDataId, from, to, { granularity = '1 minute', limit = 1000 } = {}) {
+    const { rows } = await pool.query(
+      `SELECT time_bucket($1::interval, received_at) AS bucket,
+              AVG(value) AS value, COUNT(*) AS count
+       FROM datastream
+       WHERE telemetry_data_id = $2 AND received_at BETWEEN $3 AND $4
+       GROUP BY bucket ORDER BY bucket ASC LIMIT $5`,
+      [granularity, telemetryDataId, from, to, limit]
+    );
+    return rows;
+  }
+  async deleteOlderThan(days) {
+    await pool.query(
+      `DELETE FROM datastream WHERE received_at < NOW() - ($1 || ' days')::INTERVAL`,
+      [days]
+    );
+  }
+  async healthCheck() {
+    await pool.query('SELECT 1');
+    return { ok: true };
+  }
+}
+module.exports = TimescaleDBAdapter;
+```
+
+### Environment Variables
+
+```bash
+TIMESERIES_BACKEND=timescale
 TSDB_HOST=localhost
 TSDB_PORT=5432
 TSDB_NAME=aemos_timeseries
 TSDB_USER=aemos
 TSDB_PASSWORD=your-timescaledb-password
-TSDB_DUAL_WRITE=true    # Enable dual-write during migration
-TSDB_READ_PRIMARY=false  # Set true after cut-over validation
+TSDB_POOL_MAX=20
+DATA_RETENTION_DAYS=90
+DATA_AGGREGATE_RETENTION_DAYS=730
 ```
 
----
-
-## 🎫 Issue 4.2: Migrate MySQL → PostgreSQL for Relational Data
-
-### Problem Statement
-
-Migrating to PostgreSQL consolidates both relational and time-series data on a single engine (PostgreSQL + TimescaleDB extension). This eliminates MySQL-specific ORM quirks, unlocks better JSON operators, window functions, and the `pg` driver which is better supported in Node.js.
-
 ### Acceptance Criteria
 
-- [ ] **AC1**: All 21 Sequelize models migrated to PostgreSQL dialect.
-- [ ] **AC2**: All existing tests pass against PostgreSQL.
-- [ ] **AC3**: Sequelize CLI migration baseline created for the full schema.
-- [ ] **AC4**: `DB_DIALECT` env var controls which DB engine is used (for local dev compatibility during transition).
-- [ ] **AC5**: `PRODUCTION-DEPLOYMENT.md` updated with PostgreSQL connection requirements.
-
-### Files to Modify
-
-- `src/config/database.js` — change dialect to `postgres`, use `pg` driver
-- `src/models/*.js` — update any MySQL-specific column types (`TEXT` → `JSONB` for JSON fields where appropriate)
-- `package.json` — add `pg`, `pg-hstore`; remove `mysql2` after cut-over
+- [ ] **AC1**: Adapter passes the same integration test suite as `MySQLTimeSeriesAdapter`.
+- [ ] **AC2**: `queryRange` uses `time_bucket()` for granularity ≥ 1 minute.
+- [ ] **AC3**: Bulk insert uses a single parameterised query (not individual INSERTs per row).
+- [ ] **AC4**: TimescaleDB connection pool (`TSDB_POOL_MAX`) is independent of MySQL pool.
+- [ ] **AC5**: Load test: 10,000 writes/sec sustained for 5 minutes, p99 write latency < 20ms.
 
 ---
 
-## 🎫 Issue 4.3: Socket.io Redis Adapter
+## 🎫 Issue 4.4: InfluxDBv2Adapter
 
 ### Problem Statement
 
-Socket.io room events (e.g. `broadcastToRoom('telemetry-123', ...)`) only reach clients connected to the same Node.js instance. With multiple API instances, clients on other instances silently miss events.
+InfluxDB v2 is a standalone time-series binary — no PostgreSQL required. Its schemaless tag-set + field-set model suits high-cardinality sensor data. Clients who prefer a dedicated time-series service (or are already running InfluxDB Cloud) set `TIMESERIES_BACKEND=influx`. Benchmarks show ~630K points/sec write throughput on a single node.
+
+**Write model**: HTTP Line Protocol (`/api/v2/write`), batched.  
+**Query model**: Flux language (`|> range() |> filter() |> aggregateWindow()`).
+
+### Technical Approach
+
+```javascript
+// src/repositories/timeseries/adapters/InfluxDBAdapter.js
+const TimeSeriesRepository = require('../TimeSeriesRepository');
+const { InfluxDB, Point } = require('@influxdata/influxdb-client');
+
+const client  = new InfluxDB({ url: process.env.INFLUX_URL || 'http://localhost:8086',
+                                token: process.env.INFLUX_TOKEN });
+const writeApi = client.getWriteApi(
+  process.env.INFLUX_ORG    || 'aemos',
+  process.env.INFLUX_BUCKET || 'telemetry', 'ms');
+const queryApi = client.getQueryApi(process.env.INFLUX_ORG || 'aemos');
+
+class InfluxDBAdapter extends TimeSeriesRepository {
+  async insert(rows) {
+    for (const r of rows) {
+      writeApi.writePoint(new Point('telemetry')
+        .tag('telemetryDataId', String(r.telemetryDataId))
+        .floatField('value', r.value)
+        .timestamp(new Date(r.receivedAt)));
+    }
+    await writeApi.flush();   // single HTTP round-trip for the batch
+  }
+  async queryLatest(telemetryDataId) {
+    const flux = `from(bucket:"${process.env.INFLUX_BUCKET||'telemetry'}")
+      |> range(start:-7d)
+      |> filter(fn:(r) => r.telemetryDataId == "${telemetryDataId}")
+      |> last()`;
+    const rows = await this._query(flux);
+    return rows[0] || null;
+  }
+  async queryRange(telemetryDataId, from, to, { granularity = '1m' } = {}) {
+    const flux = `from(bucket:"${process.env.INFLUX_BUCKET||'telemetry'}")
+      |> range(start:${from.toISOString()}, stop:${to.toISOString()})
+      |> filter(fn:(r) => r.telemetryDataId == "${telemetryDataId}")
+      |> aggregateWindow(every:${granularity}, fn:mean)`;
+    return this._query(flux);
+  }
+  async deleteOlderThan(days) {
+    // InfluxDB v2: bucket retention period is the preferred mechanism;
+    // explicit delete via /api/v2/delete for manual pruning
+    const stop = new Date(Date.now() - days * 86400_000).toISOString();
+    await fetch(`${process.env.INFLUX_URL}/api/v2/delete?org=${process.env.INFLUX_ORG}&bucket=${process.env.INFLUX_BUCKET}`, {
+      method: 'POST',
+      headers: { Authorization: `Token ${process.env.INFLUX_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ start: '1970-01-01T00:00:00Z', stop, predicate: '' }),
+    });
+  }
+  async healthCheck() {
+    const res = await fetch(`${process.env.INFLUX_URL}/health`);
+    if (!res.ok) throw new Error(`InfluxDB health check failed: ${res.status}`);
+    return { ok: true };
+  }
+  _query(flux) {
+    return new Promise((resolve, reject) => {
+      const rows = [];
+      queryApi.queryRows(flux, {
+        next: (row, meta) => rows.push(meta.toObject(row)),
+        error: reject,
+        complete: () => resolve(rows),
+      });
+    });
+  }
+}
+module.exports = InfluxDBAdapter;
+```
+
+### Environment Variables
+
+```bash
+TIMESERIES_BACKEND=influx
+INFLUX_URL=http://localhost:8086
+INFLUX_TOKEN=your-influxdb-admin-token
+INFLUX_ORG=aemos
+INFLUX_BUCKET=telemetry
+```
 
 ### Acceptance Criteria
 
-- [ ] **AC1**: `@socket.io/redis-adapter` configured on the Socket.io server using the shared `redisConnection`.
-- [ ] **AC2**: Feature-flagged (`SOCKET_REDIS_ADAPTER=true`) so it can be disabled during single-instance deployments.
-- [ ] **AC3**: Integration test verifies that emitting to a room from one instance is received by a client connected to another (tested with two in-process server instances sharing Redis).
+- [ ] **AC1**: Adapter passes the same integration test suite as the MySQL adapter (against a real InfluxDB v2 instance in CI).
+- [ ] **AC2**: All rows in a single `insert()` call are batched into one `writeApi.flush()`.
+- [ ] **AC3**: Bucket retention period documented in `PRODUCTION-DEPLOYMENT.md` as the primary retention mechanism; `deleteOlderThan` is a fallback.
+- [ ] **AC4**: Flux queries parameterised safely — `telemetryDataId` is a UUIDv4 (validated at route level); no Flux injection risk.
+
+---
+
+## 🎫 Issue 4.5: SystemConfig Model + Admin Selection API
+
+### Problem Statement
+
+Clients should switch their storage backend from an Admin dashboard — not only via env vars at deploy time. This mirrors ThingsBoard's System Settings UI where the `DATABASE_TS_TYPE` equivalent is a dropdown, not just a config file. The active selection is persisted in a `system_config` table and read at startup; env vars remain fallbacks.
+
+### Data Model
+
+```sql
+CREATE TABLE system_config (
+  config_key   VARCHAR(100) PRIMARY KEY,
+  config_value TEXT         NOT NULL,
+  description  VARCHAR(255),
+  updated_at   DATETIME     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  updated_by   INT          -- FK to User
+);
+
+-- Seed defaults:
+INSERT INTO system_config (config_key, config_value, description) VALUES
+  ('timeseries.backend',        'mysql',  'mysql | timescale | influx'),
+  ('queue.type',                'redis',  'redis | kafka | rabbitmq'),
+  ('data.retention.days',       '90',     'Raw telemetry retention in days'),
+  ('device.state.retention.days','180',   'DeviceStateInstance retention in days');
+```
+
+### Admin API
+
+```
+GET  /api/v1/system/config          — list all config (System Admin only)
+GET  /api/v1/system/config/:key     — get one value
+PUT  /api/v1/system/config/:key     — update; returns { requiresRestart: true } for engine changes
+```
+
+### Acceptance Criteria
+
+- [ ] **AC1**: `SystemConfig` Sequelize model and migration; table seeded with defaults.
+- [ ] **AC2**: All three endpoints restricted to `System Admin` role via `checkPermission('system.config.write')`.
+- [ ] **AC3**: Value validated against per-key allowlist (`timeseries.backend` → `mysql | timescale | influx`).
+- [ ] **AC4**: At startup, `SystemConfig` DB values override env vars; env vars are used if DB is unreachable (graceful boot).
+- [ ] **AC5**: `PUT` response includes `{ requiresRestart: true }` for `timeseries.backend` and `queue.type` changes so the frontend can show a restart banner.
+
+---
+
+## 🎫 Issue 4.6: Socket.io Redis Adapter
+
+### Problem Statement
+
+Socket.io room events only reach clients connected to the same Node.js instance. With multiple API instances, clients on other instances silently miss telemetry broadcasts.
+
+### Acceptance Criteria
+
+- [ ] **AC1**: `@socket.io/redis-adapter` configured using the shared `redisConnection`.
+- [ ] **AC2**: Feature-flagged (`SOCKET_REDIS_ADAPTER=true`) — disabled for single-instance deployments.
+- [ ] **AC3**: Integration test: emit to a room from instance A; client on instance B receives it.
 
 ### Technical Approach
 
@@ -395,31 +696,30 @@ const { createAdapter } = require('@socket.io/redis-adapter');
 const redis = require('../config/redis');
 
 if (process.env.SOCKET_REDIS_ADAPTER === 'true') {
-  const pubClient = redis;                    // existing connection
-  const subClient = redis.duplicate();        // dedicated sub connection
-  io.adapter(createAdapter(pubClient, subClient));
+  const subClient = redis.duplicate();
+  io.adapter(createAdapter(redis, subClient));
 }
 ```
 
 ---
 
-## 🎫 Issue 4.4: Redis Sentinel / HA
+## 🎫 Issue 4.7: Redis Sentinel / HA
 
 ### Problem Statement
 
-A single Redis instance is a SPOF. Redis Sentinel provides automatic failover: if the primary fails, a replica is promoted within seconds.
+A single Redis instance is a SPOF. Redis Sentinel provides automatic failover — if the primary fails, a replica is promoted within seconds. This is a prerequisite for any multi-instance or HA deployment.
 
 ### Acceptance Criteria
 
-- [ ] **AC1**: IORedis configured with Sentinel connection when `REDIS_SENTINEL_HOSTS` env var is set.
-- [ ] **AC2**: Existing single-host config (`REDIS_HOST`) continues to work unchanged when Sentinel is not configured.
-- [ ] **AC3**: `PRODUCTION-DEPLOYMENT.md` updated with Sentinel setup guide.
+- [ ] **AC1**: IORedis configured with Sentinel when `REDIS_SENTINEL_HOSTS` is set.
+- [ ] **AC2**: Existing single-host config (`REDIS_HOST`) unchanged when Sentinel is not configured.
+- [ ] **AC3**: `PRODUCTION-DEPLOYMENT.md` updated with Sentinel setup guide (3-node minimum: 1 primary + 1 replica + 1 sentinel-only).
 
 ### Technical Approach
 
 ```javascript
-// src/config/redis.js — add Sentinel support:
-const sentinelHosts = process.env.REDIS_SENTINEL_HOSTS; // "host1:26379,host2:26379"
+// src/config/redis.js — Sentinel branch:
+const sentinelHosts = process.env.REDIS_SENTINEL_HOSTS; // "h1:26379,h2:26379,h3:26379"
 const connection = sentinelHosts
   ? new Redis({
       sentinels: sentinelHosts.split(',').map(h => {
@@ -429,59 +729,43 @@ const connection = sentinelHosts
       name: process.env.REDIS_SENTINEL_MASTER || 'mymaster',
       password: process.env.REDIS_PASSWORD,
     })
-  : new Redis({ host, port, password, lazyConnect: true, enableOfflineQueue: false });
+  : new Redis({ /* existing single-host config */ });
 ```
-
----
-
-## 🎫 Issue 4.5: Data Retention Policies
-
-### Problem Statement
-
-`DataStream` and `DeviceStateInstance` have no TTL or archival strategy. At 1,000 events/sec the `DataStream` table adds 86M rows/day. Without retention, query performance and storage costs grow unboundedly.
-
-### Acceptance Criteria
-
-- [ ] **AC1**: TimescaleDB retention policy: keep 90 days raw, 2 years of 1-minute aggregates.
-- [ ] **AC2**: A `node-cron` job (or TimescaleDB background job) runs nightly to archive rows older than `DATA_RETENTION_DAYS` to S3 or a cold-storage bucket in NDJSON format.
-- [ ] **AC3**: `DeviceStateInstance` rows with `toTimestamp` older than `DEVICE_STATE_RETENTION_DAYS` (default 180 days) are pruned weekly.
-- [ ] **AC4**: All retention periods configurable via env vars.
 
 ### Environment Variables
 
 ```bash
-DATA_RETENTION_DAYS=90              # Raw DataStream retention
-DATA_AGGREGATE_RETENTION_DAYS=730   # 1-minute aggregate retention
-DEVICE_STATE_RETENTION_DAYS=180     # DeviceStateInstance retention
-COLD_STORAGE_S3_BUCKET=             # Optional S3 bucket for archives
+REDIS_SENTINEL_HOSTS=sentinel1:26379,sentinel2:26379,sentinel3:26379
+REDIS_SENTINEL_MASTER=mymaster
 ```
 
 ---
 
-## 🎫 Issue 4.6: prom-client Migration
+## 🎫 Issue 4.8: prom-client Migration
 
 ### Problem Statement
 
-`metricsManager.js` manually formats Prometheus text. It lacks process metrics (CPU, memory, GC pause, event loop lag) and real histogram buckets with correct quantile calculation.
+`metricsManager.js` manually formats Prometheus text and lacks process metrics (CPU, memory, GC pause, event loop lag) and real histogram quantile calculation.
 
 ### Acceptance Criteria
 
-- [ ] **AC1**: Replace `metricsManager.js` with `prom-client` (default metrics enabled for process/GC/event loop).
-- [ ] **AC2**: All 12 existing metrics recreated with identical names and labels so existing Grafana dashboards keep working.
-- [ ] **AC3**: `timeoutMetrics.js` metrics merged into prom-client counters.
-- [ ] **AC4**: `/api/v1/metrics/prometheus` endpoint returns `prom-client` registry output.
-- [ ] **AC5**: Cardinality guardrails retained — `FORBIDDEN_LABELS` enforced at metric definition time.
+- [ ] **AC1**: Replace `metricsManager.js` with `prom-client` (`collectDefaultMetrics()` enabled).
+- [ ] **AC2**: All existing metric names and labels preserved — Grafana dashboards keep working.
+- [ ] **AC3**: `/api/v1/metrics/prometheus` returns `prom-client` registry output.
+- [ ] **AC4**: `FORBIDDEN_LABELS` cardinality guardrails enforced at metric registration time.
 
 ---
 
 ## P4 Success Criteria
 
-- [ ] TimescaleDB accepting DataStream writes; dual-write verified for 7 days
-- [ ] PostgreSQL migration complete; all tests pass
-- [ ] Socket.io room broadcasts work correctly with 2+ API instances
-- [ ] Redis Sentinel configured for staging environment
-- [ ] Data retention policies active; oldest DataStream rows scheduled for pruning
-- [ ] `prom-client` in place; process/GC metrics visible in Grafana
+- [ ] `TimeSeriesRepository` interface in place; `dataStreamService.js` and `deviceStateInstanceService.js` use factory (not Sequelize directly)
+- [ ] `MySQLTimeSeriesAdapter` passes all existing integration tests unchanged
+- [ ] `TIMESERIES_BACKEND=timescale` enables TimescaleDB without service code changes
+- [ ] `TIMESERIES_BACKEND=influx` enables InfluxDB v2 without service code changes
+- [ ] Admin `SystemConfig` API: System Admin can switch `timeseries.backend` from dashboard; `requiresRestart` returned
+- [ ] Socket.io room broadcasts work across 2+ API instances
+- [ ] Redis Sentinel tested in staging; automatic failover verified
+- [ ] `prom-client` in place; process/GC/event-loop metrics visible in Grafana
 
 ---
 
@@ -491,12 +775,18 @@ COLD_STORAGE_S3_BUCKET=             # Optional S3 bucket for archives
 
 ## Executive Summary
 
-**Sprint Goal**: Replace the embedded Aedes MQTT broker and introduce a Kafka ingestion pipeline to reach 100,000 events/sec.  
+**Sprint Goal**: Replace the embedded Aedes MQTT broker, introduce a pluggable message queue (managed or self-hosted), and add adaptive worker scaling so the platform pays for what it uses — a single idle server at low load, up to 100K events/sec at peak.
+
+**Elastic design principle**: Like P4's pluggable storage backend, the message queue is also pluggable (`MESSAGE_QUEUE_TYPE=redis|kafka|rabbitmq`). Clients who need throughput over cost start with Redis BullMQ (already running), move to managed Kafka (Upstash / AWS MSK) when they hit its ceiling, and graduate to a self-hosted EMQX + Kafka cluster only at enterprise scale.
+
 **Total Effort**: 3 weeks  
 **Priority**: 🟠 High  
 **Dependencies**: P4 complete
 
-**Throughput after P5**: ~100,000 events/sec
+**Throughput after P5**:
+- Redis queue + adaptive workers: ~20,000 events/sec (no new infra cost)
+- Managed Kafka (Upstash/MSK) + adaptive workers: ~100,000 events/sec (~$20–$80/month additional)
+- Self-hosted EMQX + Kafka cluster: ~100,000+ events/sec (own infra)
 
 ---
 
@@ -504,83 +794,152 @@ COLD_STORAGE_S3_BUCKET=             # Optional S3 bucket for archives
 
 | # | Issue | Effort | Impact | Status |
 |---|-------|--------|--------|--------|
-| 5.1 | Replace Aedes with EMQX | 5 days | Horizontally scalable MQTT | ☐ |
-| 5.2 | Kafka ingestion pipeline | 5 days | Decouple ingest from processing | ☐ |
+| 5.1 | Tiered MQTT isolation (Aedes child process → EMQX) | 2–5 days | Process isolation at zero cost; EMQX when needed | ☐ |
+| 5.2 | Pluggable message queue (Redis → Kafka → RabbitMQ) | 5 days | Decouple ingest; managed or self-hosted | ☐ |
 | 5.3 | Distributed cron locks (Redlock) | 1 day | Prevent duplicate cron execution | ☐ |
 | 5.4 | CoAP production hardening | 2 days | Enable CoAP in production | ☐ |
 | 5.5 | LwM2M protocol support | 3 days | Constrained device management | ☐ |
+| 5.6 | Adaptive BullMQ worker scaling | 1 day | Scale-to-zero workers; pay per active job | ☐ |
 
 ---
 
-## 🎫 Issue 5.1: Replace Aedes with EMQX
+## 🎫 Issue 5.1: Tiered MQTT Isolation
 
 ### Problem Statement
 
-The embedded Aedes MQTT broker runs inside the same Node.js process as the Express API. A crash, OOM, or high CPU usage in the API process kills the broker — and vice versa. The broker also cannot be scaled independently; all device connections are pinned to a single server.
+The embedded Aedes MQTT broker runs inside the same Node.js process as the Express API. A crash or OOM in either kills both. The real cost of replacing Aedes with EMQX is operational complexity — a new process, a YAML config, and a webhook auth integration. That cost is only worth paying when device count or scale requires it.
 
-EMQX Community Edition is an Erlang-based, open-source MQTT broker that handles millions of concurrent connections at sub-millisecond latency and can be clustered horizontally.
+**Three tiers — same `MQTT_BROKER_MODE` env var:**
+
+| Mode | What runs | When to use | New infra cost |
+|------|-----------|-------------|----------------|
+| `embedded` | Aedes inside API process (current) | Dev / very small deployments | $0 |
+| `child` | Aedes in a separate child process (IPC) | **Minimal profile** — process isolation at $0 | $0 |
+| `external` | EMQX Community (external process or container) | Standard / Enterprise — independent scaling | $0 (self-hosted) |
+
+### Tier 1 — `child` mode: Aedes as a child process (recommended first step)
+
+Run Aedes in a forked child process so an API crash doesn't disconnect devices. No new software; no new config.
+
+```javascript
+// src/mqtt/mqttBroker.js (child process entry point)
+const aedes = require('aedes')();
+const net   = require('net');
+net.createServer(aedes.handle).listen(1883);
+process.on('message', msg => { /* IPC from API */ });
+aedes.on('publish', pkt => process.send({ type: 'publish', pkt }));
+```
+
+```javascript
+// src/server.js — fork the broker instead of requiring it in-process
+if (process.env.MQTT_BROKER_MODE === 'child') {
+  const { fork } = require('child_process');
+  const broker = fork('./src/mqtt/mqttBroker.js');
+  broker.on('message', msg => messageRouter.handle(msg));
+}
+```
+
+### Tier 2 — `external` mode: EMQX Community
+
+Install EMQX (free, self-hosted) when device connections exceed ~5,000 concurrent or when independent scaling is needed. The API subscribes as an internal MQTT client.
+
+```javascript
+// src/mqtt/externalBrokerClient.js — activated when MQTT_BROKER_MODE=external
+const mqtt = require('mqtt');
+const client = mqtt.connect(`mqtt://${process.env.EMQX_HOST || 'localhost'}:1883`);
+client.subscribe('#');
+client.on('message', (topic, payload) => messageRouter.handle({ topic, payload }));
+```
+
+Device authentication: EMQX fires a webhook → `POST /api/v1/mqtt/auth` (validates DeviceToken, same as before).
 
 ### Acceptance Criteria
 
-- [ ] **AC1**: EMQX runs as an external process (Docker container or binary) on port 1883.
-- [ ] **AC2**: AEMOS API subscribes to EMQX as an internal MQTT client (using the existing `mqtt` npm package), replacing the message ingestion path that previously used the Aedes in-process event emitter.
-- [ ] **AC3**: Device authentication routed through EMQX webhook → AEMOS `/api/v1/mqtt/auth` endpoint (validates DeviceToken as before).
-- [ ] **AC4**: `aedes` npm package removed from `package.json`; `mqttService.js` refactored.
-- [ ] **AC5**: All existing MQTT integration tests pass.
-- [ ] **AC6**: Feature-flag `ENABLE_EXTERNAL_MQTT=true` controls which path is active during cutover.
-
-### Key Architectural Change
-
-```
-Before:
-  Device → Aedes (in-process) → messageRouter → services
-
-After:
-  Device → EMQX (external) → EMQX webhook (auth) → AEMOS MQTT client → messageRouter → services
-```
-
----
-
-## 🎫 Issue 5.2: Kafka Ingestion Pipeline
-
-### Problem Statement
-
-Currently, every MQTT/CoAP message results in a synchronous DB write (DataStream insert) and a BullMQ job enqueue in the same request cycle. At 10,000+ messages/sec this creates backpressure that starves the rule engine queue.
-
-Kafka decouples ingestion from processing:
-1. EMQX sends messages to Kafka (via EMQX Kafka bridge or AEMOS bridge consumer).
-2. A dedicated **Ingestion Writer** service batches Kafka records and writes to TimescaleDB.
-3. A dedicated **Rule Engine Feeder** service reads from the same Kafka topic and emits BullMQ jobs.
-
-### Acceptance Criteria
-
-- [ ] **AC1**: A Kafka topic `aemos.telemetry` receives all device telemetry (normalized by existing adapters).
-- [ ] **AC2**: `IngestionWriter` service: consumes `aemos.telemetry`, batches by 500 records or 100ms, bulk-inserts into TimescaleDB.
-- [ ] **AC3**: `RuleEngineFeeder` service: consumes same topic (separate consumer group), enqueues BullMQ jobs — replacing the current `RuleEngineEventBus.emit` call in the HTTP path.
-- [ ] **AC4**: Kafka partition key = `organizationId` so events for the same org are processed in order.
-- [ ] **AC5**: Backpressure manager updated to monitor Kafka consumer lag (in addition to BullMQ queue depth).
-- [ ] **AC6**: `ENABLE_KAFKA=true` feature flag; falls back to current direct-write path when disabled.
+- [ ] **AC1**: `MQTT_BROKER_MODE=child` forks Aedes into a separate process; API ↔ broker communicate over IPC; API process crash does not disconnect devices.
+- [ ] **AC2**: `MQTT_BROKER_MODE=embedded` keeps current behaviour unchanged (default — no regression).
+- [ ] **AC3**: `MQTT_BROKER_MODE=external` connects to EMQX via `mqtt` npm client; device auth via EMQX webhook to `/api/v1/mqtt/auth`.
+- [ ] **AC4**: All existing MQTT integration tests pass in all three modes.
+- [ ] **AC5**: `MQTT_BROKER_MODE` added to `.env.example`; `PRODUCTION-DEPLOYMENT.md` documents when to use each tier.
 
 ### Environment Variables
 
 ```bash
-ENABLE_KAFKA=false              # Enable Kafka pipeline
-KAFKA_BROKERS=localhost:9092    # Comma-separated broker list
+MQTT_BROKER_MODE=embedded     # embedded | child | external  (default: embedded)
+EMQX_HOST=localhost            # only used when MQTT_BROKER_MODE=external
+EMQX_PORT=1883
+```
+
+### Key Architectural Paths
+
+```
+Minimal (child):
+  Device → Aedes (child process, IPC) → messageRouter → services
+
+Standard/Enterprise (external):
+  Device → EMQX (external) → webhook auth → AEMOS MQTT client → messageRouter → services
+```
+
+---
+
+## 🎫 Issue 5.2: Pluggable Message Queue
+
+### Problem Statement
+
+Currently every MQTT/CoAP message results in a synchronous DB write and a BullMQ job enqueue in the same request cycle. At 10,000+ messages/sec this creates backpressure that starves the rule engine. Kafka fixes this but running a self-hosted Kafka cluster is expensive and operationally heavy for small deployments.
+
+**Solution**: same pluggable pattern as P4 storage. `MESSAGE_QUEUE_TYPE` selects the backend at startup. Clients start on `redis` (already running, zero new cost), graduate to `kafka-managed` (Upstash Kafka ~$20/mo or AWS MSK) when they need it, and move to `kafka-self-hosted` only at enterprise scale. This is identical to ThingsBoard's `TB_QUEUE_TYPE: in-memory | kafka | rabbitmq | aws-sqs | pubsub`.
+
+**Queue tiers**:
+
+| Type | Throughput ceiling | Cost | Best for |
+|------|--------------------|------|----------|
+| `redis` | ~5,000 msg/sec | $0 (already running) | Small/medium deployments |
+| `kafka-managed` | ~100,000 msg/sec | ~$20–$200/month | Growing deployments; no Kafka ops |
+| `kafka-self-hosted` | Unlimited | Own infra | Enterprise; full control |
+| `rabbitmq` | ~50,000 msg/sec | Own infra | Existing RabbitMQ users |
+
+### Architecture (Kafka path)
+
+1. EMQX sends messages to Kafka topic `aemos.telemetry` (via EMQX Kafka bridge or AEMOS bridge client).
+2. **IngestionWriter** service: consumes `aemos.telemetry`, batches 500 records / 100ms, bulk-inserts into the active `TimeSeriesRepository` adapter.
+3. **RuleEngineFeeder** service: consumes same topic (separate consumer group), enqueues BullMQ jobs.
+
+### Acceptance Criteria
+
+- [ ] **AC1**: `MessageQueueFactory` (same pattern as `TimeSeriesRepositoryFactory`) returns a `QueueAdapter` based on `MESSAGE_QUEUE_TYPE`.
+- [ ] **AC2**: `redis` adapter: current BullMQ + Redis path, unchanged.
+- [ ] **AC3**: `kafka-managed` adapter: connects to any Kafka-compatible endpoint via `KAFKA_BROKERS` (works with Upstash, AWS MSK, Confluent Cloud, self-hosted).
+- [ ] **AC4**: `IngestionWriter` and `RuleEngineFeeder` services activated only when `MESSAGE_QUEUE_TYPE=kafka-managed|kafka-self-hosted`.
+- [ ] **AC5**: Kafka partition key = `organizationId` — events for the same org processed in order.
+- [ ] **AC6**: Backpressure manager updated to monitor Kafka consumer lag alongside BullMQ queue depth.
+- [ ] **AC7**: `SystemConfig` row `queue.type` (seeded in P4.5) controls active adapter; change requires restart.
+
+### Environment Variables
+
+```bash
+MESSAGE_QUEUE_TYPE=redis            # redis | kafka-managed | kafka-self-hosted | rabbitmq
+# Kafka (managed or self-hosted):
+KAFKA_BROKERS=localhost:9092        # comma-separated; works for Upstash, MSK, self-hosted
 KAFKA_CLIENT_ID=aemos-api
-KAFKA_GROUP_ID_INGEST=aemos-ingestion-writer
-KAFKA_GROUP_ID_RULES=aemos-rule-engine-feeder
+KAFKA_GROUP_ID_INGEST=aemos-ingest-writer
+KAFKA_GROUP_ID_RULES=aemos-rule-feeder
 KAFKA_TOPIC_TELEMETRY=aemos.telemetry
 KAFKA_BATCH_SIZE=500
 KAFKA_BATCH_LINGER_MS=100
+# Upstash Kafka (managed, serverless):
+KAFKA_SASL_USERNAME=                # Upstash access key
+KAFKA_SASL_PASSWORD=                # Upstash secret key
 ```
 
 ---
 
 ## 🎫 Issue 5.3: Distributed Cron Locks (Redlock)
 
+> **Profile note**: only needed for Standard/Enterprise (multiple API instances). Single-server Minimal deployments have one cron process by definition — skip this issue until running 2+ instances.
+
 ### Problem Statement
 
-`ScheduleManager.js` uses `node-cron` to trigger scheduled rule chains. When multiple API instances run (after P4 Socket.io adapter), each instance independently fires the same cron job — causing duplicate rule chain executions.
+`ScheduleManager.js` uses `node-cron` to trigger scheduled rule chains. When multiple API instances run (after P4.6 Socket.io adapter), each instance independently fires the same cron job — causing duplicate rule chain executions.
 
 ### Acceptance Criteria
 
@@ -592,11 +951,63 @@ KAFKA_BATCH_LINGER_MS=100
 
 ---
 
+## 🎫 Issue 5.6: Adaptive BullMQ Worker Scaling
+
+### Problem Statement
+
+`ruleEngineWorker.js` is always running with 20 concurrent workers. A farm that has 5 sensors and very low throughput still pays for 20 idle workers. At the other extreme, a spike in telemetry (e.g. all sensors reporting simultaneously after a network outage) can saturate 20 workers and delay rule evaluation.
+
+### Technical Approach
+
+Replace the static concurrency with a dynamic worker pool that observes queue depth and adjusts concurrency between `WORKER_MIN_CONCURRENCY` and `WORKER_MAX_CONCURRENCY`:
+
+```javascript
+// src/workers/ruleEngineWorker.js
+const MIN = parseInt(process.env.WORKER_MIN_CONCURRENCY || '1', 10);
+const MAX = parseInt(process.env.WORKER_MAX_CONCURRENCY || '20', 10);
+
+let currentConcurrency = MIN;
+const worker = new Worker('rule-engine', processJob, { concurrency: currentConcurrency });
+
+// Scale check every 10 seconds
+setInterval(async () => {
+  const waiting = await ruleEngineQueue.getWaitingCount();
+  const target = Math.min(MAX, Math.max(MIN, Math.ceil(waiting / 5)));
+  if (target !== currentConcurrency) {
+    worker.concurrency = target;
+    currentConcurrency = target;
+    logger.info(`Worker concurrency adjusted to ${target} (queue depth: ${waiting})`);
+  }
+}, 10_000);
+```
+
+**Scale-to-zero** (Kubernetes): with `WORKER_MIN_CONCURRENCY=0` and KEDA `ScaledObject` targeting BullMQ queue depth, the worker Deployment can scale to 0 replicas when idle and from 0 to N within ~30 seconds when jobs arrive (see P8.1).
+
+### Acceptance Criteria
+
+- [ ] **AC1**: Worker concurrency adjusts between `WORKER_MIN_CONCURRENCY` (default 1) and `WORKER_MAX_CONCURRENCY` (default 20) based on queue depth, checked every 10 seconds.
+- [ ] **AC2**: Concurrency change logged at `info` level; observable via Prometheus metric `rule_engine_worker_concurrency`.
+- [ ] **AC3**: Zero jobs lost during concurrency adjustment.
+- [ ] **AC4**: `WORKER_MIN_CONCURRENCY=0` supported for KEDA-managed environments (no idle worker process).
+
+### Environment Variables
+
+```bash
+WORKER_MIN_CONCURRENCY=1    # 0 for KEDA-managed scale-to-zero
+WORKER_MAX_CONCURRENCY=20
+WORKER_SCALE_CHECK_INTERVAL_MS=10000
+```
+
+---
+
 ## P5 Success Criteria
 
-- [ ] EMQX handling 10,000 concurrent device connections without API process involvement
-- [ ] Kafka ingestion pipeline processing 50,000 msgs/sec; ingestion writer p95 latency < 200ms
-- [ ] Zero duplicate cron executions observed in multi-instance staging deployment
+- [ ] `MQTT_BROKER_MODE=child`: API crash does not disconnect devices; IPC bridge tested
+- [ ] `MQTT_BROKER_MODE=external`: EMQX handles 10,000 concurrent connections without API process involvement (Standard/Enterprise only)
+- [ ] `MESSAGE_QUEUE_TYPE=redis` (default): BullMQ path unchanged; all existing tests pass
+- [ ] `MESSAGE_QUEUE_TYPE=kafka-managed`: ingestion writer processing 50,000 msgs/sec; p95 write latency < 200ms
+- [ ] Adaptive workers scale concurrency 1→20 in response to queue depth; Prometheus metric visible
+- [ ] Redlock cron deduplication verified in multi-instance staging (not required for single-server Minimal profile)
 - [ ] CoAP enabled in staging with auth hardening and rate limiting verified
 
 ---
@@ -647,7 +1058,7 @@ Devices must currently be manually registered through the API before they can se
 ### Acceptance Criteria
 
 - [ ] **AC1**: New table `FirmwareBuild` (`id`, `version`, `organizationId`, `checksum`, `storageUrl`, `releaseNotes`, `createdAt`).
-- [ ] **AC2**: `POST /api/v1/firmware` — upload firmware binary (multipart); stored in S3 or local storage; checksum computed server-side.
+- [ ] **AC2**: `POST /api/v1/firmware` — upload firmware binary (multipart); stored in **local filesystem by default** (`FIRMWARE_STORAGE=local`, path configurable via `FIRMWARE_STORAGE_PATH`); S3 optional (`FIRMWARE_STORAGE=s3`) for Standard/Enterprise; checksum computed server-side.
 - [ ] **AC3**: `POST /api/v1/firmware/:id/deploy` — assign firmware build to a device group or individual devices; creates `FirmwareDeployment` records.
 - [ ] **AC4**: Device polls `GET /api/v1/ota/check?deviceUuid=X&currentVersion=Y` — returns `{ update: true, url, checksum, version }` or `{ update: false }`.
 - [ ] **AC5**: Staged rollout: `FirmwareDeployment.targetPercent` controls what fraction of devices are offered the update.
@@ -665,7 +1076,7 @@ The current `Notification` + `Ticket` model is a skeleton. There is no threshold
 
 - [ ] **AC1**: New table `AlertRule` (`id`, `organizationId`, `sensorId`, `variableName`, `operator`, `threshold`, `severity`, `channels` (JSON array), `cooldownSeconds`, `enabled`).
 - [ ] **AC2**: AlertRule evaluation runs in the rule engine worker when a matching telemetry value arrives.
-- [ ] **AC3**: Alert delivery channels: in-app (existing Notification), email (nodemailer/SendGrid), webhook (HTTP POST to configurable URL), MQTT publish to device.
+- [ ] **AC3**: Alert delivery channels: in-app (existing Notification), **email via self-hosted SMTP** (nodemailer + `SMTP_HOST/PORT/USER/PASS` — works with any SMTP server including a local one; third-party relay like SendGrid/SES optional for Standard/Enterprise), webhook (HTTP POST to configurable URL), MQTT publish to device.
 - [ ] **AC4**: Cooldown enforcement: re-alert only after `cooldownSeconds` has elapsed since last alert for the same rule.
 - [ ] **AC5**: Alert history table `AlertEvent` records all fired alerts with value, timestamp, delivered channels.
 - [ ] **AC6**: Escalation: if an alert is not acknowledged within `escalationMinutes`, escalate to a secondary channel or contact.
@@ -697,7 +1108,7 @@ The current data model maps physical entities (sensors, devices, areas) but has 
 **Sprint Goal**: Expose time-series aggregation APIs, anomaly detection, and aquaponics-specific intelligence — making AEMOS a decision-support system, not just a data pipe.  
 **Total Effort**: 6 weeks  
 **Priority**: 🟡 Medium  
-**Dependencies**: P4 (TimescaleDB) complete
+**Dependencies**: P4 complete (works with any `TIMESERIES_BACKEND`; TimescaleDB unlocks native `time_bucket()` aggregation but MySQL adapter works with SQL `GROUP BY` bucketing)
 
 ---
 
@@ -717,7 +1128,7 @@ The current data model maps physical entities (sensors, devices, areas) but has 
 ### Acceptance Criteria
 
 - [ ] **AC1**: `GET /api/v1/telemetry/:sensorId/aggregate` accepts `startTime`, `endTime`, `bucket` (1s/1m/1h/1d), `agg` (min/max/avg/sum/count/first/last).
-- [ ] **AC2**: Queries run against TimescaleDB using `time_bucket()` continuous aggregates.
+- [ ] **AC2**: Aggregation is adapter-native — `TimeSeriesRepository.queryRange()` handles bucketing internally: TimescaleDB uses `time_bucket()`, MySQL uses `FROM_UNIXTIME(FLOOR(UNIX_TIMESTAMP(received_at) / bucket_seconds) * bucket_seconds)`. API contract is identical regardless of backend.
 - [ ] **AC3**: Multi-variable query: `GET /api/v1/telemetry/aggregate?variables=pH,DO,temperature&sensorIds=1,2,3&bucket=1m` returns all variables in one response.
 - [ ] **AC4**: Response cached in Redis for 60 seconds for `bucket >= 1m` queries.
 - [ ] **AC5**: Rate-limited per org: max 100 aggregate queries/minute.
@@ -765,7 +1176,7 @@ These rules are domain-specific to aquaponics and should be implemented as built
 
 - [ ] **AC1**: `POST /api/v1/export` accepts `{ sensorIds, startTime, endTime, format: 'csv'|'json'|'parquet', variables }`.
 - [ ] **AC2**: Large exports (> 100,000 rows) run as a background BullMQ job; client polls `GET /api/v1/export/:jobId/status`.
-- [ ] **AC3**: Completed exports stored in S3 or local storage with a signed URL returned on completion.
+- [ ] **AC3**: Completed exports stored in **local filesystem by default** (`EXPORT_STORAGE=local`, configurable path); S3 optional (`EXPORT_STORAGE=s3`) for Standard/Enterprise. For local storage a temporary signed token (JWT, 1h TTL) is returned instead of a pre-signed S3 URL.
 - [ ] **AC4**: Export rate-limited: max 5 concurrent export jobs per org.
 
 ---
@@ -776,7 +1187,10 @@ These rules are domain-specific to aquaponics and should be implemented as built
 
 ## Executive Summary
 
-**Sprint Goal**: Production-grade operations, enterprise authentication, SaaS multi-tenancy, and regulatory compliance.  
+**Sprint Goal**: Production-grade operations, enterprise authentication, SaaS multi-tenancy, regulatory compliance — and a clearly defined elastic deployment model so AEMOS is affordable at every scale.
+
+**Elastic principle**: every component has a defined minimum (cheapest idle state) and maximum (peak throughput). A single-farm client pays for a single VPS; an enterprise pays for a Kubernetes cluster — the same codebase, different deployment profile.
+
 **Total Effort**: Ongoing (12+ months)  
 **Priority**: 🟢 Planned  
 **Dependencies**: P5 complete
@@ -787,25 +1201,61 @@ These rules are domain-specific to aquaponics and should be implemented as built
 
 | # | Issue | Effort | Status |
 |---|-------|--------|--------|
-| 8.1 | Kubernetes deployment (Helm charts) | 2 weeks | ☐ |
+| 8.1 | Kubernetes + KEDA autoscaling (Helm charts) | 2 weeks | ☐ |
 | 8.2 | Multi-region support | 4 weeks | ☐ |
 | 8.3 | SSO — SAML 2.0 / OIDC | 2 weeks | ☐ |
 | 8.4 | SaaS multi-tenancy + billing | 4 weeks | ☐ |
 | 8.5 | Audit logging (GDPR / SOC2) | 2 weeks | ☐ |
 | 8.6 | Developer portal + API docs | 2 weeks | ☐ |
+| 8.7 | Elastic deployment profiles (Minimal / Standard / Enterprise) | 1 week | ☐ |
 
 ---
 
-## 🎫 Issue 8.1: Kubernetes Deployment
+## 🎫 Issue 8.1: Kubernetes + KEDA Autoscaling (Helm Charts)
+
+### Scaling model — every component has a min (cost) and max (throughput)
+
+| Component | Min replicas | Max replicas | Scale trigger |
+|-----------|-------------|-------------|---------------|
+| API | 1 | 20 | CPU > 70% OR HTTP RPS > 500 |
+| Rule Engine Worker | **0** | 10 | BullMQ queue depth > 0 (KEDA) |
+| Ingestion Writer | **0** | 5 | Kafka consumer lag > 100 (KEDA) |
+| Rule Engine Feeder | **0** | 5 | Kafka consumer lag > 100 (KEDA) |
+
+Workers scale **to zero** when idle — no idle-worker cost. KEDA wakes them within ~30 seconds when jobs arrive. The API minimum is 1 (not 2) — a single pod is acceptable for small deployments; scale for HA only when clients need it.
+
+### KEDA ScaledObject (Rule Engine Worker)
+
+```yaml
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: rule-engine-worker
+spec:
+  scaleTargetRef:
+    name: rule-engine-worker
+  minReplicaCount: 0          # scale to zero when idle
+  maxReplicaCount: 10
+  cooldownPeriod: 60          # seconds idle before scaling to zero
+  triggers:
+    - type: redis
+      metadata:
+        address: redis:6379
+        listName: bull:rule-engine:wait
+        listLength: "5"       # 1 replica per 5 waiting jobs
+```
 
 ### Acceptance Criteria
 
-- [ ] **AC1**: Helm chart with separate deployments for: API, Rule Engine Worker, Ingestion Writer, Rule Engine Feeder.
-- [ ] **AC2**: HorizontalPodAutoscaler on API deployment (CPU threshold: 70%; min: 2, max: 20).
-- [ ] **AC3**: Liveness probe: `GET /api/v1/health/liveness`; Readiness probe: `GET /api/v1/health/readiness`.
-- [ ] **AC4**: ConfigMap for non-secret env vars; ExternalSecrets or Kubernetes Secrets for DB/Redis/JWT credentials.
-- [ ] **AC5**: PodDisruptionBudget: min 1 API pod available during rolling update.
-- [ ] **AC6**: CI pipeline (GitHub Actions) builds Docker image, runs tests, pushes to registry, and triggers Helm upgrade on merge to `main`.
+- [ ] **AC1**: Helm chart with separate Deployments: API, Rule Engine Worker, Ingestion Writer, Rule Engine Feeder.
+- [ ] **AC2**: API: HPA on CPU > 70% + custom metric (HTTP RPS via KEDA Prometheus scaler); min 1, max 20.
+- [ ] **AC3**: Workers (Rule Engine Worker, Ingestion Writer, Feeder): KEDA `ScaledObject`; min 0, max configurable.
+- [ ] **AC4**: Liveness: `GET /api/v1/health/live`; Readiness: `GET /api/v1/health/ready` (already implemented in P0).
+- [ ] **AC5**: PodDisruptionBudget: min 1 API pod available during rolling update (waived when `minReplicas=1` and PDB would block drains — configurable per profile).
+- [ ] **AC6**: ConfigMap for non-secret env vars; ExternalSecrets / Kubernetes Secrets for DB/Redis/JWT credentials.
+- [ ] **AC7**: VPA (VerticalPodAutoscaler) in recommendation mode on API deployment — surface right-sizing suggestions without auto-applying.
+- [ ] **AC8**: CI pipeline (GitHub Actions): build Docker image → run tests → push to registry → Helm upgrade on merge to `main`.
+- [ ] **AC9**: Helm `values.yaml` exposes `replicaMin`, `replicaMax`, `resources.requests`, `resources.limits` per component so a single `values-minimal.yaml` file defines the cost-optimised profile.
 
 ---
 
@@ -825,7 +1275,7 @@ These rules are domain-specific to aquaponics and should be implemented as built
 ### Acceptance Criteria
 
 - [ ] **AC1**: All mutating API operations (POST, PUT, PATCH, DELETE) emit an audit event: `{ timestamp, userId, organizationId, resource, resourceId, action, changeSummary, ipAddress }`.
-- [ ] **AC2**: Audit events written to a dedicated `AuditLog` table (TimescaleDB hypertable, partitioned by `timestamp`).
+- [ ] **AC2**: Audit events written to a dedicated `AuditLog` MySQL table (Minimal/Standard); optionally promoted to a TimescaleDB hypertable (Enterprise) for long-term retention and fast time-range queries. `AUDIT_LOG_BACKEND=mysql|timescale` selects the target.
 - [ ] **AC3**: Audit log immutable: no UPDATE or DELETE operations permitted on `AuditLog`.
 - [ ] **AC4**: `GET /api/v1/audit?organizationId=X&startTime=Y&endTime=Z` — paginated audit log for System Admin and Org Admin.
 - [ ] **AC5**: GDPR right-to-erasure: `POST /api/v1/gdpr/erase?userId=X` anonymizes user PII in audit logs (replaces with `[ERASED]`) rather than deleting records.
@@ -834,16 +1284,83 @@ These rules are domain-specific to aquaponics and should be implemented as built
 
 ---
 
+## 🎫 Issue 8.7: Elastic Deployment Profiles
+
+### Problem Statement
+
+There is no canonical definition of what AEMOS looks like at each cost tier. Without one, clients over-provision (paying for enterprise infra on a small farm) or under-provision (running enterprise load on a single VPS). Each profile maps directly to `TIMESERIES_BACKEND`, `MESSAGE_QUEUE_TYPE`, and Helm `values-*.yaml` files.
+
+### Three Profiles
+
+#### 🟢 Minimal — Single server, no Kubernetes (~$20–$50/month infra)
+
+| Layer | Choice | Notes |
+|-------|--------|-------|
+| Compute | 1 Node.js process (PM2 cluster, 2–4 workers) | Single VPS / bare-metal |
+| Relational DB | MySQL (same server) | `DB_POOL_MAX=10` |
+| Time-series | `TIMESERIES_BACKEND=mysql` | No new infra |
+| Queue | `MESSAGE_QUEUE_TYPE=redis` | Redis on same server |
+| MQTT | Embedded Aedes | No EMQX |
+| Socket.io | Single instance (no Redis adapter) | `SOCKET_REDIS_ADAPTER=false` |
+| Redis HA | None (`REDIS_SENTINEL_HOSTS` unset) | Single Redis instance |
+| Capacity | ~1,000–5,000 events/sec | Suitable for < 500 sensors |
+
+#### 🟡 Standard — Small cluster, managed services (~$100–$300/month)
+
+| Layer | Choice | Notes |
+|-------|--------|-------|
+| Compute | 2–5 API pods (Docker Compose / small K8s) | HPA CPU-based |
+| Relational DB | MySQL (managed RDS / PlanetScale) | `DB_POOL_MAX=20` |
+| Time-series | `TIMESERIES_BACKEND=timescale` | Timescale Cloud from ~$50/mo |
+| Queue | `MESSAGE_QUEUE_TYPE=redis` or `kafka-managed` | Upstash Kafka ~$20/mo when needed |
+| MQTT | EMQX Community (1 node, external process) | `ENABLE_EXTERNAL_MQTT=true` |
+| Socket.io | `SOCKET_REDIS_ADAPTER=true` | Redis shared across pods |
+| Redis HA | Redis Sentinel (3 nodes) | `REDIS_SENTINEL_HOSTS` set |
+| Capacity | ~10,000–50,000 events/sec | Suitable for 500–50K sensors |
+
+#### 🔴 Enterprise — Kubernetes + full cluster (~$500+/month, scales with load)
+
+| Layer | Choice | Notes |
+|-------|--------|-------|
+| Compute | Kubernetes; KEDA scale-to-zero workers | HPA + KEDA per Issue 8.1 |
+| Relational DB | PostgreSQL (Aurora Serverless v2) | Auto-pause at low load |
+| Time-series | `TIMESERIES_BACKEND=timescale` or `influx` | Managed or self-hosted cluster |
+| Queue | `MESSAGE_QUEUE_TYPE=kafka-managed` | AWS MSK or Confluent Cloud |
+| MQTT | EMQX cluster (3+ nodes, LB in front) | Millions of concurrent connections |
+| Socket.io | `SOCKET_REDIS_ADAPTER=true` | Redis Cluster |
+| Redis HA | Redis Cluster (3 primary + 3 replica) | `REDIS_CLUSTER_NODES` |
+| Capacity | 100,000–10,000,000+ events/sec | No hard ceiling with autoscaling |
+
+### Helm Values Files
+
+```
+helm/
+  values.yaml                 ← base defaults (minimal profile)
+  values-standard.yaml        ← override for standard profile
+  values-enterprise.yaml      ← override for enterprise profile
+```
+
+Operators run `helm upgrade aemos . -f values-standard.yaml` to apply a profile. Upgrading a profile does not require code changes — only infrastructure provisioning and env var updates.
+
+### Acceptance Criteria
+
+- [ ] **AC1**: Three `values-*.yaml` files in the Helm chart covering Minimal, Standard, Enterprise resource requests/limits and replica counts.
+- [ ] **AC2**: `PRODUCTION-DEPLOYMENT.md` updated with a "Choose your profile" section linking env vars to each tier.
+- [ ] **AC3**: Admin dashboard "System Overview" page shows current active profile (derived from `SystemConfig` values) and estimated capacity.
+- [ ] **AC4**: Upgrading from Minimal → Standard requires no data migration (MySQL adapter still works; existing MySQL data accessible; operator adds TimescaleDB when ready).
+
+---
+
 ## 📊 Throughput Milestone Summary
 
-| After Sprint | Events/sec | Key Enabler |
-|-------------|------------|-------------|
-| Now (P0–P2) | ~1,000 | Single Node.js + MySQL + Aedes |
-| After P3 | ~1,000 | Security hardened — same throughput, safe for production |
-| After P4 | ~10,000 | TimescaleDB + multi-instance + Redis HA |
-| After P5 | ~100,000 | EMQX cluster + Kafka pipeline |
-| After P6–P7 | ~1,000,000 | Distributed processing + optimized write path |
-| After P8 | 10,000,000+ | Kubernetes autoscaling + multi-region |
+| After Sprint | Min-cost baseline | At full scale | Key enabler |
+|-------------|-------------------|---------------|-------------|
+| Now (P0–P2) | ~1,000 evt/sec | ~1,000 evt/sec | Single Node.js + MySQL + Aedes |
+| After P3 | ~1,000 evt/sec | ~1,000 evt/sec | Security hardened, safe for production |
+| After P4 | ~1,000 evt/sec (MySQL) | ~100K evt/sec (InfluxDB) | Pluggable storage; client chooses tier |
+| After P5 | ~5,000 evt/sec (Redis queue) | ~100K evt/sec (Kafka) | Pluggable queue + adaptive workers |
+| After P6–P7 | ~10,000 evt/sec | ~1,000,000 evt/sec | Platform services + analytics layer |
+| After P8 | ~1,000 evt/sec (scale-to-zero) | 10,000,000+ evt/sec | KEDA + elastic profiles + multi-region |
 
 ---
 

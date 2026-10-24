@@ -1,16 +1,9 @@
-/**
- * Socket.io Manager for handling real-time communication
- */
 const socketIo = require('socket.io');
 const logger = require('./logger');
 
 let io;
 
-/**
- * Initialize Socket.io server with HTTP server instance
- * @param {Object} server - HTTP server instance
- */
-function initialize(server) {
+async function initialize(server) {
   io = socketIo(server, {
     path: '/socket.io',
     cors: {
@@ -22,6 +15,16 @@ function initialize(server) {
     pingInterval: 10000,
     pingTimeout: 5000
   });
+
+  if (process.env.SOCKET_REDIS_ADAPTER === 'true') {
+    const { createAdapter } = require('@socket.io/redis-adapter');
+    const redis = require('../config/redis');
+    const pubClient = redis.duplicate();
+    const subClient = redis.duplicate();
+    await Promise.all([pubClient.connect?.(), subClient.connect?.()].filter(Boolean));
+    io.adapter(createAdapter(pubClient, subClient));
+    logger.info('Socket.io: using Redis adapter (SOCKET_REDIS_ADAPTER=true)');
+  }
 
   io.on('connection', (socket) => {
     logger.info(`Socket connected: ${socket.id}`);

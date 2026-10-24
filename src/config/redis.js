@@ -29,23 +29,47 @@ const validateRedisConfig = () => {
 
 validateRedisConfig();
 
-const redisConnection = new Redis({
-  host: process.env.REDIS_HOST || '127.0.0.1',
-  port: parseInt(process.env.REDIS_PORT || '6379', 10),
-  password: process.env.REDIS_PASSWORD || undefined,
-  username: process.env.REDIS_USERNAME || undefined,
-  maxRetriesPerRequest: null,
-  enableReadyCheck: true,
-  lazyConnect: true,
-  enableOfflineQueue: false,
-  retryStrategy: (times) => {
-    if (times > 10) {
-      logger.error('Redis connection failed after 10 retries');
-      return null;
-    }
-    return Math.min(times * 50, 2000);
+const buildRedisOptions = () => {
+  const base = {
+    password: process.env.REDIS_PASSWORD || undefined,
+    username: process.env.REDIS_USERNAME || undefined,
+    maxRetriesPerRequest: null,
+    enableReadyCheck: true,
+    lazyConnect: true,
+    enableOfflineQueue: false,
+    retryStrategy: (times) => {
+      if (times > 10) {
+        logger.error('Redis connection failed after 10 retries');
+        return null;
+      }
+      return Math.min(times * 50, 2000);
+    },
+  };
+
+  const sentinelHosts = process.env.REDIS_SENTINEL_HOSTS;
+  if (sentinelHosts) {
+    // REDIS_SENTINEL_HOSTS=host1:26379,host2:26379,host3:26379
+    const sentinels = sentinelHosts.split(',').map(h => {
+      const [host, port] = h.trim().split(':');
+      return { host, port: parseInt(port || '26379', 10) };
+    });
+    logger.info(`Redis Sentinel mode: master="${process.env.REDIS_SENTINEL_NAME || 'mymaster'}", sentinels=${sentinelHosts}`);
+    return {
+      ...base,
+      sentinels,
+      name: process.env.REDIS_SENTINEL_NAME || 'mymaster',
+      sentinelPassword: process.env.REDIS_SENTINEL_PASSWORD || undefined,
+    };
   }
-});
+
+  return {
+    ...base,
+    host: process.env.REDIS_HOST || '127.0.0.1',
+    port: parseInt(process.env.REDIS_PORT || '6379', 10),
+  };
+};
+
+const redisConnection = new Redis(buildRedisOptions());
 
 redisConnection.on('connect', () => {
   logger.info('Redis connection established');

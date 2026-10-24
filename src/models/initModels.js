@@ -20,6 +20,7 @@ const DataStream = require('./DataStream');
 const DeviceToken = require('./DeviceToken');
 const DeviceState = require('./DeviceState');
 const DeviceStateInstance = require('./DeviceStateInstance');
+const SystemConfig = require('./SystemConfig');
 const IndexManager = require('../ruleEngine/indexing/IndexManager');
 
 // Define all the associations
@@ -153,5 +154,6 @@ module.exports = {
   DataStream,
   DeviceToken,
   DeviceState,
-  DeviceStateInstance
+  DeviceStateInstance,
+  SystemConfig,
 }; 

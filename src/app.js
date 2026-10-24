@@ -13,6 +13,7 @@ const deviceTokenRoutes = require('./routes/deviceTokenRoutes');
 const { errorHandler } = require('./middlewares/errorHandler');
 const metricsMiddleware = require('./middleware/metricsMiddleware');
 const logger = require('./utils/logger');
+const config = require('./config');
 const features = require('./config/features');
 const compression = require('compression');
 const responseTime = require('response-time');
@@ -22,8 +23,11 @@ const sequelize = require('./config/database');
 // Initialize Express app
 const app = express();
 
-// Enable CORS for all routes
-app.use(cors());
+// CORS — restricted to allowlist in production via CORS_ORIGIN env var
+const allowedOrigins = config.cors.origin === '*'
+  ? '*'
+  : config.cors.origin.split(',').map(o => o.trim());
+app.use(cors({ origin: allowedOrigins, credentials: true }));
 
 // Body parser middleware
 app.use(express.json({ limit: '10mb' }));
@@ -145,50 +149,16 @@ app.use('/api/v1/areas', areaRoutes);
 app.use('/api/v1/sensors', sensorRoutes);
 app.use('/api/v1/data-streams', dataStreamRoutes);
 
-// Mount device token routes with multiple path aliases for compatibility
-console.log('*** MOUNTING DEVICE TOKEN ROUTES... ***');
+// Mount device token routes
+app.use('/api/v1/device-tokens', deviceTokenRoutes);
+app.use('/api/v1/devicetokens', deviceTokenRoutes);
+app.use('/api/v1/devicetoken', deviceTokenRoutes);
 
-// Debug middleware to log all requests to device token routes
-const deviceTokenDebugMiddleware = (req, res, next) => {
-  console.log(`*** HIT: ${req.method} ${req.originalUrl} ***`);
-  next();
-};
-
-// Apply debug middleware first
-app.use('/api/v1/device-tokens', deviceTokenDebugMiddleware, deviceTokenRoutes);
-app.use('/api/v1/devicetokens', deviceTokenDebugMiddleware, deviceTokenRoutes);
-app.use('/api/v1/devicetoken', deviceTokenDebugMiddleware, deviceTokenRoutes);
-
-// Test route accessible directly from app.js
-app.get('/api/v1/app-device-token-test', (req, res) => {
-  console.log('*** App-level device token test hit ***');
-  res.status(200).json({
-    status: 'success',
-    message: 'App-level device token test route works!'
+if (process.env.NODE_ENV !== 'production') {
+  app.get('/test', (req, res) => {
+    res.status(200).json({ status: 'success', message: 'Server is running correctly!' });
   });
-});
-
-// Log all registered routes for debugging
-console.log('All routes registered:');
-function print (path, layer) {
-  if (layer.route) {
-    layer.route.stack.forEach(print.bind(null, path.concat(path.length ? ' -> ' : '', layer.route.path)));
-  } else if (layer.name === 'router' && layer.handle.stack) {
-    layer.handle.stack.forEach(print.bind(null, path.concat(path.length ? ' -> ' : '', layer.regexp)));
-  } else if (layer.method) {
-    console.log('%s %s', layer.method.toUpperCase(), path.concat(path.length ? ' -> ' : '', layer.regexp, ' - ', layer.name));
-  }
 }
-app._router.stack.forEach(print.bind(null, ''));
-
-// Test route to verify server is working
-app.get('/test', (req, res) => {
-  console.log('Test route hit!');
-  res.status(200).json({
-    status: 'success',
-    message: 'Server is running correctly!'
-  });
-});
 
 // Handle undefined routes
 app.use('*', (req, res) => {

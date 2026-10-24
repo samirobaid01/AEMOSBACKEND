@@ -31,7 +31,7 @@ const logout = async (req, res, next) => {
     const token = req.token;
     
     // Invalidate the token
-    authService.logout(token);
+    await authService.logout(token);
     
     res.status(200).json({
       status: 'success',

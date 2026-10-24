@@ -14,7 +14,11 @@ const validateProductionConfig = () => {
     if (!process.env.JWT_SECRET || process.env.JWT_SECRET === 'your-secret-key') {
       errors.push('JWT_SECRET must be set to a secure value in production');
     }
-    
+
+    if (!process.env.CORS_ORIGIN || process.env.CORS_ORIGIN === '*') {
+      errors.push('CORS_ORIGIN must be set to an explicit allowlist in production (e.g. https://app.aemos.io,https://admin.aemos.io)');
+    }
+
     if (errors.length > 0) {
       console.error('\n❌ PRODUCTION CONFIGURATION ERRORS:\n');
       errors.forEach(error => console.error(`   - ${error}`));
@@ -47,6 +51,9 @@ module.exports = {
   jwt: {
     secret: process.env.JWT_SECRET || 'your-secret-key',
     expiresIn: process.env.JWT_EXPIRES_IN || '24h'
+  },
+  cors: {
+    origin: process.env.CORS_ORIGIN || '*'
   },
   logging: {
     level: process.env.LOG_LEVEL || 'info'

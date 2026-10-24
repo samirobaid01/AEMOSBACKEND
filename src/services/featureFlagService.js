@@ -13,7 +13,8 @@ if (features.featureFlags.enabled && features.featureFlags.provider === 'unleash
 // Local feature flags if not using Unleash
 const localFlags = {
   'new-sensor-algorithm': process.env.ENABLE_NEW_SENSOR_ALGORITHM === 'true',
-  'advanced-analytics': process.env.ENABLE_ADVANCED_ANALYTICS === 'true'
+  'advanced-analytics': process.env.ENABLE_ADVANCED_ANALYTICS === 'true',
+  'realtime-dashboard': process.env.ENABLE_REALTIME_DASHBOARD === 'true'
 };
 
 /**

@@ -1,22 +1,30 @@
-// In-memory token blacklist
-// In a production environment, this should be replaced with Redis or another persistent store
-const blacklistedTokens = new Set();
+const redis = require('../config/redis');
+const logger = require('../utils/logger');
 
-// Add a token to the blacklist
-const blacklistToken = (token, expiryTime) => {
-  blacklistedTokens.add(token);
-  
-  // Set a timeout to remove the token from the blacklist after it expires
-  // This helps prevent the blacklist from growing indefinitely
-  const tokenExpiryMs = expiryTime * 1000;
-  setTimeout(() => {
-    blacklistedTokens.delete(token);
-  }, tokenExpiryMs);
+const BLACKLIST_PREFIX = 'jwt:blacklist:';
+
+// Add a token to the blacklist until its natural expiry time (epoch ms)
+const blacklistToken = async (token, expiresAt) => {
+  const ttl = Math.max(1, Math.floor((expiresAt - Date.now()) / 1000));
+  const key = `${BLACKLIST_PREFIX}${token}`;
+  try {
+    await redis.set(key, '1', 'EX', ttl);
+  } catch (err) {
+    logger.error('Failed to blacklist token in Redis', { error: err.message });
+    // Fail open — logout succeeds even if Redis is temporarily unavailable
+  }
 };
 
-// Check if a token is blacklisted
-const isTokenBlacklisted = (token) => {
-  return blacklistedTokens.has(token);
+// Returns true if the token has been blacklisted
+const isTokenBlacklisted = async (token) => {
+  const key = `${BLACKLIST_PREFIX}${token}`;
+  try {
+    const val = await redis.get(key);
+    return val !== null;
+  } catch (err) {
+    logger.error('Failed to check token blacklist in Redis', { error: err.message });
+    return false; // Fail open — do not block all requests if Redis is down
+  }
 };
 
 module.exports = {

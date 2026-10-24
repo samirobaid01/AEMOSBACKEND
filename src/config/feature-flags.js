@@ -7,12 +7,3 @@ const unleash = initialize({
 });
 
 module.exports = unleash;
-
-// Usage in code
-const unleash = require('../config/feature-flags');
-
-if (unleash.isEnabled('new-sensor-algorithm')) {
-  // Use new algorithm
-} else {
-  // Use old algorithm
-}

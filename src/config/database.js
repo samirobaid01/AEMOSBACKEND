@@ -16,9 +16,9 @@ const sequelize = new Sequelize(
       sync: { alter: false, force: false },
     },
     pool: {
-      max: 5,
+      max: parseInt(process.env.DB_POOL_MAX || '20', 10),
       min: 0,
-      acquire: 30000,
+      acquire: 60000,
       idle: 10000,
     },
   }

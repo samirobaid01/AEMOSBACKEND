@@ -45,20 +45,14 @@ const login = async (email, password) => {
 };
 
 // Logout a user by invalidating the token
-const logout = (token) => {
+const logout = async (token) => {
   try {
-    // Verify the token to get its expiry time
     const decoded = jwt.verify(token, config.jwt.secret);
-    
-    // Calculate remaining time until token expiry (in seconds)
-    const expiryTime = decoded.exp - Math.floor(Date.now() / 1000);
-    
-    // Add token to blacklist until it expires
-    blacklistToken(token, expiryTime);
-    
+    // Pass expiry as epoch ms so blacklistToken can compute remaining TTL
+    await blacklistToken(token, decoded.exp * 1000);
     return true;
   } catch (error) {
-    // If token is invalid or expired, no need to blacklist
+    // If token is invalid or already expired, no need to blacklist
     return false;
   }
 };

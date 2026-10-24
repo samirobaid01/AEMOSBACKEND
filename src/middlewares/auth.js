@@ -19,7 +19,7 @@ const authenticate = async (req, res, next) => {
     const token = authHeader.split(' ')[1];
     
     // Check if token is blacklisted (logged out)
-    if (isTokenBlacklisted(token)) {
+    if (await isTokenBlacklisted(token)) {
       throw new ApiError(401, 'Token is no longer valid');
     }
     
